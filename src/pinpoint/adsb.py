@@ -48,7 +48,7 @@ def download_day(day: str, data_dir: Path) -> Path:
         tag = f"v{y}.{m}.{d}-planes-readsb-{suffix}"
         try:
             with urllib.request.urlopen(f"https://api.github.com/repos/adsblol/globe_history_{y}/releases/tags/{tag}") as r:
-                assets = [a["browser_download_url"] for a in json.load(r)["assets"]]
+                assets = [(a["browser_download_url"], a["size"]) for a in json.load(r)["assets"]]
             break
         except urllib.error.HTTPError as e:
             if e.code != 404:
@@ -57,9 +57,11 @@ def download_day(day: str, data_dir: Path) -> Path:
         raise SystemExit(f"no adsb.lol history for {day}")
     # parts to disk with retry/resume (GitHub hands out transient 504s), then extract in order
     parts = []
-    for u in sorted(assets):
+    for u, size in sorted(assets):
         part = out / u.rsplit("/", 1)[1]
-        for attempt in range(12):  # resets mid-transfer (curl 18/56) need a fresh resumed request
+        for attempt in range(12):
+            if part.exists() and part.stat().st_size == size:
+                break  # resets mid-transfer (curl 18/56) need a fresh resumed request
             r = subprocess.run(["curl", "-sfL", "--retry", "5", "--retry-all-errors", "--retry-delay", "10",
                                 "-C", "-", "-o", str(part), u])
             if r.returncode == 0:
