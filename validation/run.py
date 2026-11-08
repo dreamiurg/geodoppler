@@ -105,14 +105,15 @@ def main():
 
 
 def write_md(rows):
-    lines = ["| Video | Date | Status | Error | Score (runner-up) | Margin | Start found / known |",
+    lines = ["| Video | Date | Status | Error | Score (runner-up) | Margin | Video start found / known |",
              "|---|---|---|---|---|---|---|"]
     for r in rows:
         err = f"{r['error_km']} km" if "error_km" in r else ""
         sc = f"{r['score']} ({r['runner_up']})" if "score" in r else ""
         mg = f"{(r['score'] - r['runner_up']) / r['runner_up']:.2%}" if r.get("runner_up") else ""
         title = (r.get('title') or r['id'])[:50].replace("|", "/")
-        st = f"{r.get('found_start', '')} / {r.get('section_start_utc') or '?'}" if "found_start" in r else ""
+        known = (r.get("start_utc") or "?").replace("T", " ").rstrip("Z")
+        st = f"{r['found_start']} / {known}" if "found_start" in r else ""
         lines.append(f"| [{title}]({r['url']}) | {r.get('date_utc', '')} | {r['status']} | {err} | {sc} | {mg} | {st} |")
     (HERE / "results.md").write_text("\n".join(lines) + "\n")
 

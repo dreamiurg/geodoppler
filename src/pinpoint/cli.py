@@ -8,6 +8,7 @@
 """
 
 import argparse
+import html
 import json
 import os
 import re
@@ -54,7 +55,7 @@ def fetch(url: str, section_start: float = 0.0) -> Path:
     (run / "meta.json").write_text(json.dumps({**{k: info.get(k) for k in META_KEYS},
                                               "release_timestamp": info.get("release_timestamp"),
                                               "section_start_s": section_start}, indent=2))
-    if not list(run.glob("audio.*")):
+    if not media(run, "audio"):
         log(f"downloading audio for {info['id']}: {info.get('title')!r}")
         # whole track over plain https (section cuts via ffmpeg hang on long live archives); cut locally
         ytdlp("-q", "--no-playlist", "-f", "bestaudio[protocol^=http]/bestaudio/best", "-o", str(run / "audio.%(ext)s"),
@@ -69,20 +70,29 @@ def fetch(url: str, section_start: float = 0.0) -> Path:
     return run
 
 
+def media(run: Path, stem: str) -> list[Path]:
+    """Finished downloads only (yt-dlp leaves .part/.ytdl files when interrupted)."""
+    return [p for p in sorted(run.glob(f"{stem}.*")) if p.suffix not in (".part", ".ytdl")]
+
+
 def load_spec(run: Path) -> audio.Spec:
     cache = run / "spec.npz"
     meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    start = float(meta.get("section_start_s") or 0)
     if cache.exists():
         z = np.load(cache)
-        if "start" in z and float(z["start"]) == float(meta.get("section_start_s") or 0):
+        if "start" in z and float(z["start"]) == start:
             return audio.Spec(z["t"], z["f"], z["S"])
+        if "start" in z:  # analysed window moved: event times etc. refer to the old one
+            for stale in ("events.json", "events.png", "candidates.parquet", "verified.parquet", "result.json"):
+                (run / stale).unlink(missing_ok=True)
     return _build_spec(run, cache, meta)
 
 
 def _build_spec(run: Path, cache: Path, meta: dict) -> audio.Spec:
     # shortcut: first MAX_MINUTES only; long livestreams would need chunked spectrograms
     start = float(meta.get("section_start_s") or 0)
-    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60, start_s=start)
+    x = audio.load(str(media(run, "audio")[0]), max_s=MAX_MINUTES * 60, start_s=start)
     level = float(20 * np.log10(np.sqrt(np.mean(x.astype(np.float64) ** 2)) + 1e-12))
     (run / "level_db").write_text(f"{level:.1f}\n")
     sp = audio.suppress_steady(audio.spectrogram(x))
@@ -117,11 +127,11 @@ def overview(sp: audio.Spec, run: Path, chunk=600.0, fmax=500.0):
 def frames(run: Path, n=24) -> Path:
     """Evenly spaced stills for visual clues (signs, terrain, vegetation, architecture)."""
     meta = json.loads((run / "meta.json").read_text())
-    vid = next(run.glob("video.*"), None)
+    vid = next(iter(media(run, "video")), None)
     if vid is None:
         ytdlp("-q", "--no-playlist", "-f", "bv*[height<=720]/b[height<=720]/bv*/b", "-o", str(run / "video.%(ext)s"),
               meta["webpage_url"])
-        vid = next(run.glob("video.*"))
+        vid = media(run, "video")[0]
     out = run / "frames"
     out.mkdir(exist_ok=True)
     dur = float(meta.get("duration") or 60)
@@ -255,18 +265,18 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
     combo = [f"icao{i + 1}" for i in range(n)]
     per_combo = cands.drop_duplicates(combo)
     runner = per_combo.iloc[1] if len(per_combo) > 1 else None
-    start = pd.to_datetime(best.start, unit="s")
     types = df.drop_duplicates("icao").set_index("icao")["type"].astype(str).to_dict()
     # (event time in recording, icao) for every event the best candidate explains
     heard = [(e.tc, best[f"icao{i + 1}"]) for i, e in enumerate(evs)]
     heard += [(e.tc, best[f"xicao{j + 1}"]) for j, e in enumerate(extra) if best.get(f"xicao{j + 1}")]
+    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    off = float(meta.get("section_start_s") or 0)  # spectrogram t=0 is this many seconds into the video
     tracks = []
     for tc, icao in sorted(heard):
         t_cpa = best.start + tc
         g = df[(df.icao == icao) & ((df.t - t_cpa).abs() < 900)]
         tracks.append({"path": g[["lat", "lon"]].round(5).values.tolist(),
-                       "label": f"{icao} {types.get(icao, '')}: heard at {tc:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
-    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+                       "label": html.escape(f"{icao} {types.get(icao, '')}: heard at {tc + off:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC")})
     margin = None if runner is None else (best.score - runner.score) / runner.score
     # validation: correct answers had 18-50 % margins, wrong ones 0.04-8 %
     confidence = "unknown" if margin is None else "high" if margin >= 0.15 else "low"
@@ -274,9 +284,10 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
         "runner_up_score": None if runner is None else round(float(runner.score), 3),
         "margin": None if margin is None else round(float(margin), 3), "confidence": confidence,
-        "recording_start_utc": f"{start:%Y-%m-%d %H:%M:%S}",
-        "aircraft": [{"heard_at_s": round(tc, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
-        "events_unexplained": [round(e.tc, 1) for j, e in enumerate(extra) if not best.get(f"xicao{j + 1}")],
+        "recording_start_utc": f"{pd.to_datetime(best.start - off, unit='s'):%Y-%m-%d %H:%M:%S}",
+        "analysed_from_s": off,
+        "aircraft": [{"heard_at_s": round(tc + off, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
+        "events_unexplained": [round(e.tc + off, 1) for j, e in enumerate(extra) if not best.get(f"xicao{j + 1}")],
         "date": date, "candidates": len(cands),
         "google_maps": f"https://www.google.com/maps?q={best.lat:.5f},{best.lon:.5f}",
     }
@@ -286,7 +297,7 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
         "Confidence": f"{confidence} (margin {result['margin']:.0%} over the next aircraft combination)" if margin is not None else confidence,
         "Score": f"{result['score']} (next aircraft combination: {result['runner_up_score']})",
         "Recording started": result["recording_start_utc"] + " UTC",
-        "Aircraft heard": "<br>".join(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}" for a in result["aircraft"]),
+        "Aircraft heard": "<br>".join(html.escape(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}") for a in result["aircraft"]),
         "Events unexplained": ", ".join(f"{t:.0f}s" for t in result["events_unexplained"]) or "none",
     }
     title = meta.get("title") or run.name
@@ -327,6 +338,7 @@ def main(argv=None):
         p.add_argument("--no-open", action="store_true")
         if p.prog.endswith("run"):
             p.add_argument("--box", action="append", type=parse_box)
+            p.add_argument("--section-start", type=float, default=0, help="seconds into the video to start analysing")
     a = ap.parse_args(argv)
 
     if a.cmd == "fetch":
@@ -338,16 +350,18 @@ def main(argv=None):
     elif a.cmd == "events":
         events(a.run, a.box)
     else:
-        run = fetch(a.target) if a.cmd == "run" else Path(a.target)
+        run = fetch(a.target, a.section_start) if a.cmd == "run" else Path(a.target)
         if a.cmd == "run":
             events(run, a.box)
         meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
         d = a.date or (meta.get("upload_date") and f"{meta['upload_date'][:4]}-{meta['upload_date'][4:6]}-{meta['upload_date'][6:]}")
-        if not d:
-            raise SystemExit("--date required")
         start = None
         if a.start:
-            s0 = pd.Timestamp(a.start, tz="UTC").timestamp()
+            ts = pd.Timestamp(a.start)
+            ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+            s0 = ts.timestamp() + float(meta.get("section_start_s") or 0)  # --start is the video's start
             start = (s0 - a.start_window, s0 + a.start_window)
-            d = a.date or pd.Timestamp(a.start).strftime("%Y-%m-%d")
+            d = a.date or f"{ts:%Y-%m-%d}"
+        if not d:
+            raise SystemExit("--date required")
         locate(run, d, a.bbox, a.step, not a.no_open, start, a.days)

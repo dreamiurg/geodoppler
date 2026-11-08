@@ -107,6 +107,8 @@ def ensure_day(day: str, data_dir: Path) -> Path:
     """props.parquet for the day; raw traces (~3 GB) are deleted once reduced."""
     out = data_dir / "adsb" / day / "props.parquet"
     if not out.exists():
+        if not (out.parent / "traces").exists():
+            (out.parent / ".complete").unlink(missing_ok=True)  # traces were already reduced and deleted
         build_parquet(download_day(day, data_dir))
         shutil.rmtree(out.parent / "traces", ignore_errors=True)
     return out
@@ -122,5 +124,7 @@ def build_parquet(day_dir: Path, bbox=CONUS, workers: int = 10) -> Path:
         rows = [r for chunk in ex.map(_reduce_dir, [(d, bbox, types) for d in dirs]) for r in chunk]
     df = pd.DataFrame(rows, columns=["icao", "type", "t", "lat", "lon", "alt_m", "gs"])
     df = df.astype({"icao": "category", "type": "category", "alt_m": "float32", "gs": "float32"})
-    df.sort_values(["icao", "t"]).to_parquet(out, index=False)
+    tmp = out.with_suffix(".tmp")
+    df.sort_values(["icao", "t"]).to_parquet(tmp, index=False)
+    tmp.replace(out)  # a crash mid-write must not leave a parquet that looks complete
     return out

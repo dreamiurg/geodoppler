@@ -114,8 +114,10 @@ def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
     o = np.lexsort((D, G))
     first = np.r_[True, G[o][1:] != G[o][:-1]]
     G, D, K = G[o][first], D[o][first], K[o][first]
-    # CPA at the ends of the pass is a truncation artefact, not a real closest approach
-    keep = (K > 0) & (K < len(tr_t) - 1)
+    # CPA at the ends of the pass or next to a reporting gap is a truncation artefact, not a real closest approach
+    gap = np.diff(tr_t) > 3.0  # samples are 2 s apart after [::2]
+    edge = np.r_[True, gap] | np.r_[gap, True]
+    keep = ~edge[K]
     if not keep.any():
         return None
     G, D, K = G[keep], D[keep], K[keep]

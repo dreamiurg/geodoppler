@@ -40,3 +40,17 @@ def test_grid_window_equals_brute_force():
     assert set(pts.window(*box)) == set(brute)
     sub = pts.subset(brute[::3])
     assert set(sub.window(*box)) == set(brute[::3])
+
+
+def test_cpa_next_to_reporting_gap_is_rejected():
+    """Track drops out across its true CPA: the samples either side of the gap are not a real closest approach."""
+    import pandas as pd
+    from pinpoint.search import passes
+    lat0, lon0 = 40.0, -100.0
+    t, lat, lon, alt = synthetic_track(lat0, lon0, alt=1000.0, offset=0.0)
+    seg = pd.DataFrame({"t": t, "lat": lat, "lon": lon, "alt_m": alt, "gs": 120.0})
+    pts = Points.grid((lat0 - 0.002, lon0 - 0.002, lat0 + 0.002, lon0 + 0.002), 200)
+    full = passes(seg, pts, 8000)
+    assert full is not None and len(full) == len(pts)  # CPA mid-track: every point kept
+    holed = passes(seg[(seg.t < -40) | (seg.t > 40)], pts, 8000)  # gap edges are 5 km away: in range
+    assert holed is None or len(holed) == 0

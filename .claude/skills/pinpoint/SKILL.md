@@ -50,7 +50,8 @@ uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox conus               # 
 ```
 
 Recording that may cross midnight UTC: add `--days 2`. Known start time (on-screen clock, livestream
-start, phone call): add `--start 2026-09-08T20:17:30`. One event plus a known time is NOT enough for
+start, phone call): add `--start 2026-09-08T20:17:30` (the video's own start, also with `--section-start`;
+`recording_start_utc` and `heard_at_s` in result.json are video time too). One event plus a known time is NOT enough for
 `--bbox conus` (tested: wrong state, 0.6 % margin, 5.5 h); it can work inside a small region. One event
 with no known time is refused (tested: 69 km off, 0.8 % margin): go to section 3.
 
