@@ -60,6 +60,10 @@ def fetch(url: str, section_start: float = 0.0) -> Path:
         ytdlp("-q", "--no-playlist", "-f", "bestaudio[protocol^=http]/bestaudio/best", "-o", str(run / "audio.%(ext)s"),
               info["webpage_url"], timeout=1800)
     spec = load_spec(run)
+    level = float((run / "level_db").read_text()) if (run / "level_db").exists() else None
+    (run / "meta.json").write_text(json.dumps({**json.loads((run / "meta.json").read_text()), "level_db": level}, indent=2))
+    if level is not None and level < -70:
+        log(f"WARNING: audio is silent ({level:.0f} dBFS): no microphone, nothing acoustic to work with")
     overview(spec, run)
     log(f"run dir: {run}")
     return run
@@ -70,14 +74,15 @@ def load_spec(run: Path) -> audio.Spec:
     if cache.exists():
         z = np.load(cache)
         return audio.Spec(z["t"], z["f"], z["S"])
+    return _build_spec(run, cache)
+
+
+def _build_spec(run: Path, cache: Path) -> audio.Spec:
     # shortcut: first MAX_MINUTES only; long livestreams would need chunked spectrograms
     meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
     x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60, start_s=meta.get("section_start_s") or 0)
     level = float(20 * np.log10(np.sqrt(np.mean(x.astype(np.float64) ** 2)) + 1e-12))
-    if meta:
-        (run / "meta.json").write_text(json.dumps({**meta, "level_db": round(level, 1)}, indent=2))
-    if level < -70:
-        log(f"WARNING: audio is silent ({level:.0f} dBFS): no microphone, nothing acoustic to work with")
+    (run / "level_db").write_text(f"{level:.1f}\n")
     sp = audio.suppress_steady(audio.spectrogram(x))
     np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S)
     return sp
@@ -157,7 +162,10 @@ def events(run: Path, boxes=None) -> list[doppler.Event]:
     for e in evs:
         log(f"event tc={e.tc:.1f}s v={e.v:.0f} m/s slant={e.d:.0f} m f0={e.f0:.1f} Hz score={e.score:.2f}")
     (run / "events.json").write_text(json.dumps([e.to_dict() for e in evs], indent=2))
-    plot_events(sp, evs, run / "events.png")
+    if evs:
+        plot_events(sp, evs, run / "events.png")
+    else:
+        log("no Doppler events found")
     return evs
 
 
