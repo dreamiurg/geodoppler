@@ -51,13 +51,18 @@ def download_day(day: str, data_dir: Path) -> Path:
         raise SystemExit(f"no adsb.lol history for {day} ({e.code} from {api})")
     if not assets:
         raise SystemExit(f"no adsb.lol history for {day}")
-    # stream the split tar parts, in order, straight into tar -x: no 4 GB temp file
-    tar = subprocess.Popen(["tar", "-x", "-C", str(out), "./traces"], stdin=subprocess.PIPE)
+    # parts to disk with retry/resume (GitHub hands out transient 504s), then extract in order
+    parts = []
     for u in sorted(assets):
-        subprocess.run(["curl", "-sfL", u], check=True, stdout=tar.stdin)
-    tar.stdin.close()
-    if tar.wait():
+        part = out / u.rsplit("/", 1)[1]
+        subprocess.run(["curl", "-sfL", "--retry", "8", "--retry-all-errors", "--retry-delay", "15",
+                        "-C", "-", "-o", str(part), u], check=True)
+        parts.append(part)
+    cat = subprocess.Popen(["cat", *map(str, parts)], stdout=subprocess.PIPE)
+    if subprocess.run(["tar", "-x", "-C", str(out), "./traces"], stdin=cat.stdout).returncode or cat.wait():
         raise SystemExit(f"extracting {tag} failed")
+    for part in parts:
+        part.unlink()
     (out / ".complete").touch()
     return out
 
