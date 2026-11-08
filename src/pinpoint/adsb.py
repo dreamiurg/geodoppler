@@ -10,6 +10,7 @@ import gzip
 import json
 import shutil
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ProcessPoolExecutor
@@ -58,8 +59,14 @@ def download_day(day: str, data_dir: Path) -> Path:
     parts = []
     for u in sorted(assets):
         part = out / u.rsplit("/", 1)[1]
-        subprocess.run(["curl", "-sfL", "--retry", "8", "--retry-all-errors", "--retry-delay", "15",
-                        "-C", "-", "-o", str(part), u], check=True)
+        for attempt in range(12):  # resets mid-transfer (curl 18/56) need a fresh resumed request
+            r = subprocess.run(["curl", "-sfL", "--retry", "5", "--retry-all-errors", "--retry-delay", "10",
+                                "-C", "-", "-o", str(part), u])
+            if r.returncode == 0:
+                break
+            time.sleep(min(120, 10 * 2 ** attempt))
+        else:
+            raise SystemExit(f"download kept failing: {u}")
         parts.append(part)
     cat = subprocess.Popen(["cat", *map(str, parts)], stdout=subprocess.PIPE)
     if subprocess.run(["tar", "-x", "-C", str(out), "./traces"], stdin=cat.stdout).returncode or cat.wait():
