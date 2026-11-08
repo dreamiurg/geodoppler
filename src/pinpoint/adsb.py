@@ -42,13 +42,16 @@ def download_day(day: str, data_dir: Path) -> Path:
         return out
     out.mkdir(parents=True, exist_ok=True)
     y, m, d = day.split("-")
-    tag = f"v{y}.{m}.{d}-planes-readsb-prod-0"
-    api = f"https://api.github.com/repos/adsblol/globe_history_{y}/releases/tags/{tag}"
-    try:
-        with urllib.request.urlopen(api) as r:
-            assets = [a["browser_download_url"] for a in json.load(r)["assets"]]
-    except urllib.error.HTTPError as e:
-        raise SystemExit(f"no adsb.lol history for {day} ({e.code} from {api})")
+    assets = []
+    for suffix in ("prod-0", "prod-0tmp", "staging-0", "staging-0tmp"):  # naming varies by day
+        tag = f"v{y}.{m}.{d}-planes-readsb-{suffix}"
+        try:
+            with urllib.request.urlopen(f"https://api.github.com/repos/adsblol/globe_history_{y}/releases/tags/{tag}") as r:
+                assets = [a["browser_download_url"] for a in json.load(r)["assets"]]
+            break
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise
     if not assets:
         raise SystemExit(f"no adsb.lol history for {day}")
     # parts to disk with retry/resume (GitHub hands out transient 504s), then extract in order
