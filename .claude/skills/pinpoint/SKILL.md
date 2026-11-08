@@ -20,6 +20,10 @@ Read `runs/<id>/meta.json`. Note, in this order of strength:
 - `location` (YouTube recording location) -> usually the answer already; still confirm.
 - Places, dates, times in title / description / tags. "Filmed September 8th" style hints set `--date`.
 - `upload_date` is the fallback date (recordings are often uploaded weeks later: prefer explicit hints).
+- Links to the raw/original/full recording ("Link to full recording: ...") -> analyse THAT video instead:
+  edited videos with music and narration hide the aircraft and break the time offsets.
+- Livestream archives: `release_timestamp` in meta.json is the stream start (UTC). Long streams: analyse
+  a daylight 2-hour slice with `fetch URL --section-start SECONDS` (props fly by day).
 
 ## 2. Acoustic path (the strong one)
 
@@ -34,7 +38,8 @@ uv run pinpoint events runs/<id> --box 2080,2240,80,190,1+2 --box 2990,3140,95,1
 
 `--box t0,t1,fmin,fmax[,1+2]`: seconds into the recording, Hz range of the line's sweep, and which
 harmonics are visible. Read `runs/<id>/events.png`: the cyan model must sit on the ridge. If it sits on a
-flat line or noise, tighten the box and refit. Two events are much stronger than one; three are fine.
+flat line or noise, tighten the box and refit. Keep every real flyover: `locate` searches with the two
+strongest and uses the others to verify candidates (each extra explained event raises the true spot).
 
 Then search. Region from the clues; tighter is faster and safer:
 
@@ -43,6 +48,9 @@ uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox 40.9,-73.5,120     # l
 uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox 39.9,-74.5,41.9,-72.5
 uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox conus               # hours; run in background
 ```
+
+Recording that may cross midnight UTC: add `--days 2`. Known start time (on-screen clock, livestream
+start, phone call): `--start 2026-09-08T20:17:30` makes even one event enough for `--bbox conus`.
 
 Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. Judge confidence from
 `score` vs `runner_up_score` (best of the *next aircraft combination*). A clear margin (>15%) with both
@@ -75,5 +83,5 @@ recording start time (acoustic path gives it to the second), aircraft heard, ass
 - Needs the audio to carry aircraft sound: an unedited stretch (cuts break the time offsets) and a
   non-jet flyover within ~8 km. Jets are filtered out (their tones do not show clean Doppler lines here).
 - ADS-B = adsb.lol community receivers: dense in the US/Europe, thin elsewhere; history from 2023 on.
-- Ground elevation is taken as 0 m (sea level). Slant distances are off by the site's elevation: widen
-  tolerances or expect a shifted fit in high terrain.
+- Analyses the first 2 hours of audio (PINPOINT_MAX_MINUTES). Searching a 2x2 degree box takes ~4 min in a
+  busy area; `conus` takes hours.
