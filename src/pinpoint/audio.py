@@ -9,11 +9,11 @@ import scipy.signal as ss
 SR = 4000  # aircraft prop fundamentals sit well below 1 kHz
 
 
-def load(path: str, sr: int = SR, max_s: float | None = None) -> np.ndarray:
-    """Decode any media file to mono float32 at `sr` via ffmpeg (first `max_s` seconds if given)."""
+def load(path: str, sr: int = SR, max_s: float | None = None, start_s: float = 0) -> np.ndarray:
+    """Decode any media file to mono float32 at `sr` via ffmpeg (`max_s` seconds from `start_s`)."""
     limit = ["-t", str(max_s)] if max_s else []
     raw = subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-i", path, *limit, "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
+        ["ffmpeg", "-loglevel", "error", "-ss", str(start_s), "-i", path, *limit, "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
         check=True, capture_output=True,
     ).stdout
     return np.frombuffer(raw, dtype=np.float32)

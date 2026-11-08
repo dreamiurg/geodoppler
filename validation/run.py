@@ -57,6 +57,10 @@ def run_one(c, radius):
     if code:
         return {**rec, "status": "fetch failed", "detail": err.strip().splitlines()[-1:]}
     run = ROOT / "runs" / c["id"]
+    level = json.loads((run / "meta.json").read_text()).get("level_db")
+    rec["level_db"] = level
+    if level is not None and level < -70:
+        return {**rec, "status": "silent audio"}
     code, _, err = sh("events", str(run))
     evs = json.loads((run / "events.json").read_text()) if (run / "events.json").exists() else []
     rec["events"] = [round(e["tc"]) for e in evs]

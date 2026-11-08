@@ -37,12 +37,13 @@ def log(msg):
 
 # ---------- fetch ----------
 
-def ytdlp(*args) -> str:
+def ytdlp(*args, timeout=300) -> str:
     """The system yt-dlp: YouTube breaks old versions often, and a package manager keeps it current."""
     exe = shutil.which("yt-dlp")
     if not exe:
         raise SystemExit("yt-dlp not found on PATH (brew install yt-dlp)")
-    return subprocess.run([exe, "--no-warnings", *args], check=True, capture_output=True, text=True).stdout
+    return subprocess.run([exe, "--no-warnings", *args], check=True, capture_output=True, text=True,
+                          timeout=timeout).stdout
 
 
 def fetch(url: str, section_start: float = 0.0) -> Path:
@@ -55,9 +56,9 @@ def fetch(url: str, section_start: float = 0.0) -> Path:
                                               "section_start_s": section_start}, indent=2))
     if not list(run.glob("audio.*")):
         log(f"downloading audio for {info['id']}: {info.get('title')!r}")
-        s0, s1 = int(section_start), int(section_start + MAX_MINUTES * 60)
-        cut = ["--download-sections", f"*{s0}-{s1}"] if s0 or (info.get("duration") or 0) > s1 else []
-        ytdlp("-q", "--no-playlist", "-f", "bestaudio/best", *cut, "-o", str(run / "audio.%(ext)s"), info["webpage_url"])
+        # whole track over plain https (section cuts via ffmpeg hang on long live archives); cut locally
+        ytdlp("-q", "--no-playlist", "-f", "bestaudio[protocol^=http]/bestaudio/best", "-o", str(run / "audio.%(ext)s"),
+              info["webpage_url"], timeout=1800)
     spec = load_spec(run)
     overview(spec, run)
     log(f"run dir: {run}")
@@ -70,7 +71,13 @@ def load_spec(run: Path) -> audio.Spec:
         z = np.load(cache)
         return audio.Spec(z["t"], z["f"], z["S"])
     # shortcut: first MAX_MINUTES only; long livestreams would need chunked spectrograms
-    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60)
+    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60, start_s=meta.get("section_start_s") or 0)
+    level = float(20 * np.log10(np.sqrt(np.mean(x.astype(np.float64) ** 2)) + 1e-12))
+    if meta:
+        (run / "meta.json").write_text(json.dumps({**meta, "level_db": round(level, 1)}, indent=2))
+    if level < -70:
+        log(f"WARNING: audio is silent ({level:.0f} dBFS): no microphone, nothing acoustic to work with")
     sp = audio.suppress_steady(audio.spectrogram(x))
     np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S)
     return sp
