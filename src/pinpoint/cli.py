@@ -216,6 +216,9 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     sp, all_evs = load_spec(run), load_events(run)
     if not all_evs:
         raise SystemExit("no events: run `pinpoint events` first")
+    if len(all_evs) < 2 and start is None:
+        # validation: 1 event, unknown time -> 2.7 h search, wrong spot, 0.8 % margin
+        raise SystemExit("only one flyover: need a second one or a known start time (--start)")
     by_score = sorted(all_evs, key=lambda e: -e.score)
     evs = sorted(by_score[:2], key=lambda e: e.tc)
     extra = sorted(by_score[2:], key=lambda e: e.tc)

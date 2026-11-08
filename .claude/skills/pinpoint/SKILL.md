@@ -51,7 +51,8 @@ uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox conus               # 
 
 Recording that may cross midnight UTC: add `--days 2`. Known start time (on-screen clock, livestream
 start, phone call): add `--start 2026-09-08T20:17:30`. One event plus a known time is NOT enough for
-`--bbox conus` (tested: wrong state, 0.6 % margin, 5.5 h); it can work inside a small region.
+`--bbox conus` (tested: wrong state, 0.6 % margin, 5.5 h); it can work inside a small region. One event
+with no known time is refused (tested: 69 km off, 0.8 % margin): go to section 3.
 
 Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. `result.json` has `confidence`:
 `high` when `score` beats the best *other aircraft combination* by >= 15 %, else `low`. In validation every
