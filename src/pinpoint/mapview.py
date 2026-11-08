@@ -28,7 +28,7 @@ const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Wo
   {maxZoom: 19, attribution: 'Imagery &copy; Esri'});
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'});
-const map = L.map('map', {layers: [sat]});
+const map = L.map('map', {layers: [sat]}).setView([R.best.lat, R.best.lon], 13);
 L.control.layers({'Satellite': sat, 'Streets': osm}).addTo(map);
 const pts = L.layerGroup().addTo(map), tracks = L.layerGroup().addTo(map);
 const smax = Math.max(...R.points.map(p => p.score)), smin = Math.min(...R.points.map(p => p.score));
@@ -43,7 +43,6 @@ R.tracks.forEach((t, i) => L.polyline(t.path, {color: colors[i % 4], weight: 2, 
 const b = R.best;
 L.marker([b.lat, b.lon]).bindPopup(b.html).addTo(map).openPopup();
 L.circle([b.lat, b.lon], {radius: R.radius_m, color: '#fff', weight: 1, fill: false}).addTo(map);
-map.setView([b.lat, b.lon], 13);
 document.getElementById('panel').innerHTML = R.panel;
 L.control.layers(null, {'Candidates': pts, 'Matched flight tracks': tracks}, {position: 'bottomleft'}).addTo(map);
 </script></body></html>"""
