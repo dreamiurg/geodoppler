@@ -70,14 +70,16 @@ def _fit_window(args):
     return fit_event(box, t0, t1, fmin, fmax)
 
 
-def detect_events(spec: Spec, fmin=40.0, fmax=400.0, win=160.0, step=40.0, min_score=1.2,
+def detect_events(spec: Spec, fmin=40.0, fmax=400.0, scales=((160.0, 40.0), (70.0, 20.0)), min_score=1.2,
                   log=lambda m: None, workers=10) -> list[Event]:
     """Slide a window over the recording, fit a flyover in each, keep confident, distinct ones.
     shortcut: scores only the fitted line (no harmonics); pass explicit boxes for weak events."""
     from concurrent.futures import ProcessPoolExecutor
 
     t_end = spec.t[-1]
-    wins = [(t0, min(t0 + win, t_end)) for t0 in np.arange(spec.t[0], max(spec.t[0] + 1, t_end - win + step), step)]
+    # long windows catch distant, slow sweeps; short ones catch close, fast passes
+    wins = [(t0, min(t0 + win, t_end)) for win, step in scales
+            for t0 in np.arange(spec.t[0], max(spec.t[0] + 1, t_end - win + step), step)]
     jobs = [(spec.crop(t0 - 6, t1 + 6, fmin * 0.85, fmax * 1.15), t0, t1, fmin, fmax) for t0, t1 in wins]
     with ProcessPoolExecutor(workers) as ex:
         fits = list(ex.map(_fit_window, jobs))
@@ -89,7 +91,8 @@ def detect_events(spec: Spec, fmin=40.0, fmax=400.0, win=160.0, step=40.0, min_s
         log(f"window {t0:7.0f}-{t1:7.0f}s: tc={e.tc:7.1f} v={e.v:5.1f} d={e.d:6.0f} score={e.score:.2f}{' *' if ok else ''}")
         if ok:
             found.append(e)
-    found.sort(key=lambda e: -e.score)
+    # same flyover seen at both scales: the long window constrains distance and speed far better
+    found.sort(key=lambda e: (-(e.t1 - e.t0), -e.score))
     keep: list[Event] = []
     for e in found:
         if all(abs(e.tc - k.tc) > 60 for k in keep):
