@@ -32,7 +32,7 @@ S-shaped tones lasting 1-3 minutes**, often with a parallel line at 2x the frequ
 aircraft flying past (Doppler). Steady horizontal lines are hum/engines idling: ignore them.
 
 ```bash
-uv run pinpoint events runs/<id>                       # auto-detect, keeps the 2 strongest
+uv run pinpoint events runs/<id>                       # auto-detect all flyovers
 uv run pinpoint events runs/<id> --box 2080,2240,80,190,1+2 --box 2990,3140,95,185
 ```
 
