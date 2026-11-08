@@ -53,15 +53,32 @@ Needs `yt-dlp` and `ffmpeg` on PATH. ADS-B days cache under `$PINPOINT_DATA` (de
 
 ## Validation
 
-| Recording | Search area | Result | Truth |
-| --- | --- | --- | --- |
-| colsto raw audio (4CxVxuMVkMc), 3 flyovers | 2°×2° around NYC | 40.87, −73.52, start 20:17:28 UTC, margin 18 % | 40.87, −73.5 (video) |
+22 public YouTube recordings with a known place and day (`validation/candidates.json`), searched within
+100 km of the truth on the known UTC day, start time unknown (`validation/run.py`). Most recordings carry
+no usable aircraft sound, so the useful number is "how often it is right when it answers, and does it
+know when it is wrong".
 
-See `validation/` for the wider set.
+| Recording | Flyovers | Result | Error | Margin -> confidence |
+| --- | --- | --- | --- | --- |
+| colsto raw audio (4CxVxuMVkMc), 2°×2° box | 3 | located, start 20:17:28 UTC | matches the video (truth given to 0.01°) | 18 % -> high |
+| Huron OH railcam, Oct 18 2026 (u8qudttB8PI) | 8 | located, 5 aircraft matched | 0.21 km | 50 % -> high |
+| Huron OH railcam, Aug 15 2026 (cq68vWhv8DQ) | 2 | wrong spot | 25 km | 6 % -> low |
+| Panama City Beach boat ramp (7IrHU1tydh4) | 2 | wrong spot (boat Doppler?) | 105 km | 8 % -> low |
+| Huron OH railcam, Sep 1 2026 (SemiF2yUFzk) | 1 | wrong spot; now refused | 69 km | 0.8 % -> low |
+| colsto audio, 1 event + known start, all CONUS | 1 | wrong state (Kansas) | ~2200 km | 0.6 % -> low |
+| Viroqua WI field recording (MjWQyWLvoVw) | 4 | no match (recording date unsure) | | |
+| Oshkosh 2025 arrivals (x2sVBsOfsmI) | 12 | wrong spot (landing traffic) | 22 km | 0.04 % -> low |
+| 6 airport / beach webcams, 2 field recordings, 2 railcam days | 0 | no flyovers detected | | |
+| 6 webcam archives | | silent audio track | | |
+
+So far: every `high` answer was right and every wrong answer was flagged `low`. The
+sample is tiny (2 high answers). Airport plane-spotting streams fail: ground operations and landings are
+not straight constant-speed flyovers. Full table: `validation/results.md`.
 
 ## Limits
 
 - Needs unedited audio with at least one non-jet flyover within ~8 km (two for an unknown time).
 - Coverage = adsb.lol receivers (dense in US/Europe), history from 2023.
-- Ground elevation is taken as 0 m; inland high terrain biases slant distances.
-- One UTC day of tracks per search; a recording across midnight UTC needs both days.
+- Ground elevation comes from Copernicus GLO-90 (downloaded per 1° tile on first use).
+- One UTC day of tracks per search; a recording across midnight UTC needs `--days 2`.
+- One flyover is not enough without a known start time, and not enough for a CONUS-wide search even with one.

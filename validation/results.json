@@ -1,0 +1,435 @@
+[
+  {
+    "id": "EZ8QfJFiTwM",
+    "url": "https://www.youtube.com/watch?v=EZ8QfJFiTwM",
+    "title": "Ocean City, MD Boardwalk & Beach Cam: Plim Plaza Hotel Real-Time Views",
+    "date_utc": "2026-07-07",
+    "start_utc": "2026-07-07T22:53:31Z",
+    "lat": 38.33297,
+    "lon": -75.08499,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-07-07 22:53:31",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "J48dJv6vt7w",
+    "url": "https://www.youtube.com/watch?v=J48dJv6vt7w",
+    "title": "Ocean City MD Boardwalk: The Thrasher's Fry Cam | Archive | July 6, 2026",
+    "date_utc": "2026-07-06",
+    "start_utc": "2026-07-06T11:04:02Z",
+    "lat": 38.3281,
+    "lon": -75.0865,
+    "section_start_s": 15978.76,
+    "section_start_utc": "2026-07-06 15:30:20",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "wzAqGo1KJpw",
+    "url": "https://www.youtube.com/watch?v=wzAqGo1KJpw",
+    "title": "Archive - Key West Cam, Southernmost Point Buoy",
+    "date_utc": "2024-10-03",
+    "start_utc": "2024-10-03T17:41:58Z",
+    "lat": 24.54651,
+    "lon": -81.7975,
+    "section_start_s": 0.0,
+    "section_start_utc": "2024-10-03 17:41:58",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "xiujA5aISiw",
+    "url": "https://www.youtube.com/watch?v=xiujA5aISiw",
+    "title": "Southernmost Shores Webcam | Keys Cams, Key West Webcam, Southernmost Beach Resort",
+    "date_utc": "2026-09-21",
+    "start_utc": "2026-09-21T23:39:06Z",
+    "lat": 24.54713,
+    "lon": -81.7949,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-09-21 23:39:06",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "MoMjj1Zy5Ac",
+    "url": "https://www.youtube.com/watch?v=MoMjj1Zy5Ac",
+    "title": "EEOR-East Hampton, NY- Georgica Jetty 5:00 AM 2026-07-30",
+    "date_utc": "2026-07-30",
+    "start_utc": "2026-07-30T09:00:17Z",
+    "lat": 40.924,
+    "lon": -72.229,
+    "section_start_s": 22717.96,
+    "section_start_utc": "2026-07-30 15:18:54",
+    "level_db": -24.9,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:14:13] no Doppler events found"
+    ]
+  },
+  {
+    "id": "1hGs1xrPxXU",
+    "url": "https://www.youtube.com/watch?v=1hGs1xrPxXU",
+    "title": "EEOR-East Hampton, NY- Georgica Jetty 5:00 AM 2026-08-23",
+    "date_utc": "2026-08-23",
+    "start_utc": "2026-08-23T09:00:26Z",
+    "lat": 40.924,
+    "lon": -72.229,
+    "section_start_s": 22708.96,
+    "section_start_utc": "2026-08-23 15:18:54",
+    "level_db": -24.9,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:17:23] no Doppler events found"
+    ]
+  },
+  {
+    "id": "sQaRcpy846s",
+    "url": "https://www.youtube.com/watch?v=sQaRcpy846s",
+    "title": "Watching Planes At Van Nuys Airport | July 12 2026",
+    "date_utc": "2026-07-12",
+    "start_utc": "2026-07-12T20:47:11Z",
+    "lat": 34.2072,
+    "lon": -118.4901,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-07-12 20:47:11",
+    "level_db": -34.2,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:19:22] no Doppler events found"
+    ]
+  },
+  {
+    "id": "hiCWsikiyG0",
+    "url": "https://www.youtube.com/watch?v=hiCWsikiyG0",
+    "title": "LIVE Watching Planes At Van Nuys Airport (VNY)",
+    "date_utc": "2026-08-01",
+    "start_utc": "2026-08-01T01:11:46Z",
+    "lat": 34.2072,
+    "lon": -118.4901,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-08-01 01:11:46",
+    "level_db": -35.7,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:20:32] no Doppler events found"
+    ]
+  },
+  {
+    "id": "GCgJdWz5Fus",
+    "url": "https://www.youtube.com/watch?v=GCgJdWz5Fus",
+    "title": "LIVE ATLANTA Airport Plane Spotting (KPDK | PDK)",
+    "date_utc": "2026-06-02",
+    "start_utc": "2026-06-02T17:03:49Z",
+    "lat": 33.8759,
+    "lon": -84.3028,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-06-02 17:03:49",
+    "level_db": -33.5,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:22:53] no Doppler events found"
+    ]
+  },
+  {
+    "id": "Dznr_2QB-D4",
+    "url": "https://www.youtube.com/watch?v=Dznr_2QB-D4",
+    "title": "Live Planespotting FROM JOHN WAYNE ORANGE COUNTY:SNA Airport June 9 2025",
+    "date_utc": "2025-06-09",
+    "start_utc": "2025-06-09T17:36:24Z",
+    "lat": 33.6742,
+    "lon": -117.868,
+    "section_start_s": 0.0,
+    "section_start_utc": "2025-06-09 17:36:24",
+    "level_db": -23.3,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:25:48] no Doppler events found"
+    ]
+  },
+  {
+    "id": "x2sVBsOfsmI",
+    "url": "https://www.youtube.com/watch?v=x2sVBsOfsmI",
+    "title": "Oshkosh 2025 Arrivals 9am-3:30pm Sunday July 20th Runway 36",
+    "date_utc": "2025-07-20",
+    "start_utc": "2025-07-20T13:52:53Z",
+    "lat": 43.9739,
+    "lon": -88.5558,
+    "section_start_s": 9080.392,
+    "section_start_utc": "2025-07-20 16:24:13",
+    "level_db": -20.9,
+    "events": [
+      321,
+      2110,
+      2692,
+      3603,
+      4078,
+      4180,
+      4605,
+      5524,
+      5812,
+      5940,
+      7043,
+      7104
+    ],
+    "minutes": 5.3,
+    "found_lat": 43.88194,
+    "found_lon": -88.7973,
+    "score": 2.712,
+    "runner_up": 2.711,
+    "found_start": "2025-07-20 17:55:05",
+    "aircraft": [
+      "a954bb",
+      "ab00e4",
+      "a95381",
+      "adbad6",
+      "a95877",
+      "ab4fe4",
+      "ac8fa4",
+      "a66030",
+      "a2decd",
+      "aab838"
+    ],
+    "error_km": 21.88,
+    "status": "located"
+  },
+  {
+    "id": "Jf4N_-7uT1E",
+    "url": "https://www.youtube.com/watch?v=Jf4N_-7uT1E",
+    "title": "360 Nature Soundscape: Overcast Sunrise at Bay Shore Park, WI (Spatial Audio)",
+    "date_utc": "2025-05-27",
+    "start_utc": null,
+    "lat": 44.6359,
+    "lon": -87.7972,
+    "section_start_s": 0.0,
+    "level_db": -43.6,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:32:18] no Doppler events found"
+    ]
+  },
+  {
+    "id": "jjYYI8Bx9kk",
+    "url": "https://www.youtube.com/watch?v=jjYYI8Bx9kk",
+    "title": "Field Recording: Sunrise Green Bay Wi 4K Ambient",
+    "date_utc": "2025-05-27",
+    "start_utc": null,
+    "lat": 44.6359,
+    "lon": -87.7972,
+    "section_start_s": 0.0,
+    "level_db": -45.1,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[01:34:09] no Doppler events found"
+    ]
+  },
+  {
+    "id": "IRxJ9L0MmO8",
+    "url": "https://www.youtube.com/watch?v=IRxJ9L0MmO8",
+    "title": "Jolly Roger Pier Archive: Summer Crowds & Rides (7/8/26)",
+    "date_utc": "2026-07-08",
+    "start_utc": "2026-07-08T21:09:56Z",
+    "lat": 38.32785,
+    "lon": -75.08568,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-07-08 21:09:56",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "EtcCP9zkNms",
+    "url": "https://www.youtube.com/watch?v=EtcCP9zkNms",
+    "title": "Boston Harbor Live View - 2026-07-21 (Daytime) - Logan Jets & Harbor Traffic",
+    "date_utc": "2026-07-21",
+    "start_utc": "2026-07-21T08:00:36Z",
+    "lat": 42.3457,
+    "lon": -71.0437,
+    "section_start_s": 26014.488,
+    "section_start_utc": "2026-07-21 15:14:10",
+    "level_db": -240.0,
+    "status": "silent audio"
+  },
+  {
+    "id": "7IrHU1tydh4",
+    "url": "https://www.youtube.com/watch?v=7IrHU1tydh4",
+    "title": "June 3, 2025, Panama City Beach Boats: Cam Boat Ramp Dock Marina",
+    "date_utc": "2025-06-03",
+    "start_utc": "2025-06-03T15:05:21Z",
+    "lat": 30.1312,
+    "lon": -85.736,
+    "section_start_s": 4055.64,
+    "section_start_utc": "2025-06-03 16:12:56",
+    "level_db": -16.6,
+    "events": [
+      3274,
+      3861
+    ],
+    "minutes": 27.7,
+    "found_lat": 30.81715,
+    "found_lon": -86.49429,
+    "score": 1.366,
+    "runner_up": 1.269,
+    "found_start": "2025-06-03 16:26:04",
+    "aircraft": [
+      "a038f6",
+      "a1f043"
+    ],
+    "error_km": 105.35,
+    "status": "located"
+  },
+  {
+    "id": "u8qudttB8PI",
+    "url": "https://www.youtube.com/watch?v=u8qudttB8PI",
+    "title": "Oct 18 2026 #1 - Huron, Ohio, USA | LIVE Train Camera | Main Street Railfan",
+    "date_utc": "2026-10-18",
+    "start_utc": "2026-10-18T11:46:17Z",
+    "lat": 41.38924,
+    "lon": -82.56009,
+    "section_start_s": 15237.4216,
+    "section_start_utc": "2026-10-18 16:00:14",
+    "level_db": -36.1,
+    "events": [
+      890,
+      2282,
+      2941,
+      3154,
+      3255,
+      5199,
+      5891,
+      6701
+    ],
+    "minutes": 30.9,
+    "found_lat": 41.38811,
+    "found_lon": -82.558,
+    "score": 5.397,
+    "runner_up": 3.603,
+    "found_start": "2026-10-18 16:00:48",
+    "aircraft": [
+      "aae6b9",
+      "a22123",
+      "aa8311",
+      "a89228",
+      "a17b23"
+    ],
+    "error_km": 0.21,
+    "status": "located"
+  },
+  {
+    "id": "SemiF2yUFzk",
+    "url": "https://www.youtube.com/watch?v=SemiF2yUFzk",
+    "title": "Sep 1 2026 #2 - Huron, Ohio, USA | LIVE Train Camera | Main Street Railfan",
+    "date_utc": "2026-09-01",
+    "start_utc": "2026-09-01T23:45:23Z",
+    "lat": 41.38924,
+    "lon": -82.56009,
+    "section_start_s": 0.0,
+    "section_start_utc": "2026-09-01 23:45:23",
+    "level_db": -36.3,
+    "events": [
+      3860
+    ],
+    "minutes": 161.5,
+    "found_lat": 40.80625,
+    "found_lon": -82.26672,
+    "score": 1.586,
+    "runner_up": 1.574,
+    "found_start": "2026-09-02 10:17:51",
+    "aircraft": [
+      "a7c76a"
+    ],
+    "error_km": 69.33,
+    "status": "located"
+  },
+  {
+    "id": "Th-CA4jXgRs",
+    "url": "https://www.youtube.com/watch?v=Th-CA4jXgRs",
+    "title": "Aug 20 2026 #1 - Huron, Ohio, USA | LIVE Train Camera | Main Street Railfan",
+    "date_utc": "2026-08-20",
+    "start_utc": "2026-08-20T11:45:56Z",
+    "lat": 41.38924,
+    "lon": -82.56009,
+    "section_start_s": 15258.4216,
+    "section_start_utc": "2026-08-20 16:00:14",
+    "level_db": -28.6,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[05:32:51] no Doppler events found"
+    ]
+  },
+  {
+    "id": "cq68vWhv8DQ",
+    "url": "https://www.youtube.com/watch?v=cq68vWhv8DQ",
+    "title": "Aug 15 2026 #1 - Huron, Ohio, USA | LIVE Train Camera | Main Street Railfan",
+    "date_utc": "2026-08-15",
+    "start_utc": "2026-08-15T11:45:26Z",
+    "lat": 41.38924,
+    "lon": -82.56009,
+    "section_start_s": 15288.4216,
+    "section_start_utc": "2026-08-15 16:00:14",
+    "level_db": -29.0,
+    "events": [
+      1090,
+      3390
+    ],
+    "minutes": 11.8,
+    "found_lat": 41.23972,
+    "found_lon": -82.33504,
+    "score": 1.067,
+    "runner_up": 1.003,
+    "found_start": "2026-08-15 12:23:40",
+    "aircraft": [
+      "a58495",
+      "a695bc"
+    ],
+    "error_km": 25.09,
+    "status": "located"
+  },
+  {
+    "id": "SWijZVLQ36w",
+    "url": "https://www.youtube.com/watch?v=SWijZVLQ36w",
+    "title": "Oct 13 2026 #1 - Huron, Ohio, USA | LIVE Train Camera | Main Street Railfan",
+    "date_utc": "2026-10-13",
+    "start_utc": "2026-10-13T11:45:23Z",
+    "lat": 41.38924,
+    "lon": -82.56009,
+    "section_start_s": 15291.4216,
+    "section_start_utc": "2026-10-13 16:00:14",
+    "level_db": -30.1,
+    "events": [],
+    "status": "no Doppler events",
+    "detail": [
+      "[05:48:41] no Doppler events found"
+    ]
+  },
+  {
+    "id": "MjWQyWLvoVw",
+    "url": "https://www.youtube.com/watch?v=MjWQyWLvoVw",
+    "title": "Spring Morning - Small Town Soundscape (Jason Abt Field Recordings)",
+    "date_utc": "2025-05-11",
+    "start_utc": null,
+    "lat": 43.5569,
+    "lon": -90.8887,
+    "section_start_s": 0.0,
+    "level_db": -32.3,
+    "events": [
+      327,
+      2713,
+      6077,
+      7007
+    ],
+    "minutes": 8.5,
+    "status": "no match",
+    "detail": [
+      "no location matched all events; widen --bbox, check --date, or refit events"
+    ]
+  }
+]
