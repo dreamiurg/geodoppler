@@ -8,6 +8,7 @@ vrate, details, source, alt_geom_ft, ...] relative to the file's `timestamp`.
 
 import gzip
 import json
+import shutil
 import subprocess
 import urllib.error
 import urllib.request
@@ -83,6 +84,15 @@ def _reduce_dir(args):
                 continue  # on ground or no speed
             rows.append((icao, typ, ts + r[0], lat, lon, alt * FT, r[4] * KT))
     return rows
+
+
+def ensure_day(day: str, data_dir: Path) -> Path:
+    """props.parquet for the day; raw traces (~3 GB) are deleted once reduced."""
+    out = data_dir / "adsb" / day / "props.parquet"
+    if not out.exists():
+        build_parquet(download_day(day, data_dir))
+        shutil.rmtree(out.parent / "traces", ignore_errors=True)
+    return out
 
 
 def build_parquet(day_dir: Path, bbox=CONUS, workers: int = 10) -> Path:

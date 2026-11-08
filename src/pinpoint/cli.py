@@ -130,15 +130,14 @@ def parse_box(s: str):
     return (*map(float, p[:4]), h)
 
 
-def events(run: Path, boxes=None, auto_top=2) -> list[doppler.Event]:
+def events(run: Path, boxes=None) -> list[doppler.Event]:
+    """Fit events; all go to events.json. `locate` searches with the two strongest and uses the rest to verify."""
     sp = load_spec(run)
     if boxes:
         evs = [doppler.fit_event(sp, t0, t1, f0, f1, h) for t0, t1, f0, f1, h in boxes]
     else:
         log("auto-detecting Doppler events (a few minutes per hour of audio)")
-        found = doppler.detect_events(sp, log=log)
-        evs = sorted(sorted(found, key=lambda e: -e.score)[:auto_top], key=lambda e: e.tc)
-        (run / "detected.json").write_text(json.dumps([e.to_dict() for e in found], indent=2))
+        evs = doppler.detect_events(sp, log=log)
     evs.sort(key=lambda e: e.tc)
     for e in evs:
         log(f"event tc={e.tc:.1f}s v={e.v:.0f} m/s slant={e.d:.0f} m f0={e.f0:.1f} Hz score={e.score:.2f}")
@@ -188,32 +187,39 @@ def tiles(bbox, size=2.0):
             yield (a, b, min(a + size, lat1), min(b + size, lon1))
 
 
-def locate(run: Path, date: str, bbox, step=200.0, open_map=True) -> dict:
+def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None) -> dict:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise SystemExit(f"--date must be YYYY-MM-DD, got {date!r}")
-    sp, evs = load_spec(run), load_events(run)
-    if not evs:
+    sp, all_evs = load_spec(run), load_events(run)
+    if not all_evs:
         raise SystemExit("no events: run `pinpoint events` first")
+    by_score = sorted(all_evs, key=lambda e: -e.score)
+    evs = sorted(by_score[:2], key=lambda e: e.tc)
+    extra = sorted(by_score[2:], key=lambda e: e.tc)
+    log(f"searching with events at {', '.join(f'{e.tc:.0f}s' for e in evs)}; verifying with "
+        f"{', '.join(f'{e.tc:.0f}s' for e in extra) or 'none'}")
     log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
-    day = adsb.download_day(date, DATA)
-    df = pd.read_parquet(adsb.build_parquet(day))
+    df = pd.read_parquet(adsb.ensure_day(date, DATA))
     # shortcut: one UTC day of tracks; a recording that straddles midnight needs the next day too
     res = []
     for tb in tiles(bbox):
         pad = 0.15
         sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
         log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
-        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m))
+        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start)
         if len(r):
             res.append(r)
     if not res:
         raise SystemExit("no location matched all events; widen --bbox, check --date, or refit events")
     cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)
     cands.to_parquet(run / "candidates.parquet")
-    return report(run, cands, df, evs, date, open_map)
+    if extra:
+        cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log)
+        cands.to_parquet(run / "verified.parquet")
+    return report(run, cands, df, evs, date, open_map, extra)
 
 
-def report(run, cands, df, evs, date, open_map=True) -> dict:
+def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
     n = len(evs)
     best = cands.iloc[0]
     combo = [f"icao{i + 1}" for i in range(n)]
@@ -221,19 +227,22 @@ def report(run, cands, df, evs, date, open_map=True) -> dict:
     runner = per_combo.iloc[1] if len(per_combo) > 1 else None
     start = pd.to_datetime(best.start, unit="s")
     types = df.drop_duplicates("icao").set_index("icao")["type"].astype(str).to_dict()
+    # (event time in recording, icao) for every event the best candidate explains
+    heard = [(e.tc, best[f"icao{i + 1}"]) for i, e in enumerate(evs)]
+    heard += [(e.tc, best[f"xicao{j + 1}"]) for j, e in enumerate(extra) if best.get(f"xicao{j + 1}")]
     tracks = []
-    for i in range(n):
-        icao = best[f"icao{i + 1}"]
-        t_cpa = best.start + evs[i].tc
+    for tc, icao in sorted(heard):
+        t_cpa = best.start + tc
         g = df[(df.icao == icao) & ((df.t - t_cpa).abs() < 900)]
         tracks.append({"path": g[["lat", "lon"]].round(5).values.tolist(),
-                       "label": f"event {i + 1}: {icao} {types.get(icao, '')}, CPA heard {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
+                       "label": f"{icao} {types.get(icao, '')}: heard at {tc:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
     meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
     result = {
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
         "runner_up_score": None if runner is None else round(float(runner.score), 3),
         "recording_start_utc": f"{start:%Y-%m-%d %H:%M:%S}",
-        "aircraft": [{"icao": best[c], "type": types.get(best[c], "")} for c in combo],
+        "aircraft": [{"heard_at_s": round(tc, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
+        "events_unexplained": [round(e.tc, 1) for j, e in enumerate(extra) if not best.get(f"xicao{j + 1}")],
         "date": date, "candidates": len(cands),
         "google_maps": f"https://www.google.com/maps?q={best.lat:.5f},{best.lon:.5f}",
     }
@@ -242,8 +251,8 @@ def report(run, cands, df, evs, date, open_map=True) -> dict:
         "Best estimate": f"<a href='{result['google_maps']}' target=_blank>{result['lat']}, {result['lon']}</a>",
         "Score": f"{result['score']} (next aircraft combination: {result['runner_up_score']})",
         "Recording started": result["recording_start_utc"] + " UTC",
-        "Aircraft heard": ", ".join(f"{a['icao']} {a['type']}" for a in result["aircraft"]),
-        "Candidates scored": f"{len(cands):,}",
+        "Aircraft heard": "<br>".join(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}" for a in result["aircraft"]),
+        "Events unexplained": ", ".join(f"{t:.0f}s" for t in result["events_unexplained"]) or "none",
     }
     title = meta.get("title") or run.name
     path = mapview.render(cands, run / "map.html", title, info, tracks)
@@ -276,6 +285,8 @@ def main(argv=None):
         p.add_argument("--bbox", type=parse_bbox, default="conus",
                        help="lat0,lon0,lat1,lon1 | lat,lon,radius_km | conus")
         p.add_argument("--step", type=float, default=200.0, help="coarse grid metres")
+        p.add_argument("--start", help="known recording start, UTC ISO time, e.g. 2026-09-08T20:17:40")
+        p.add_argument("--start-window", type=float, default=120, help="+/- seconds around --start")
         p.add_argument("--no-open", action="store_true")
         if p.prog.endswith("run"):
             p.add_argument("--box", action="append", type=parse_box)
@@ -297,4 +308,9 @@ def main(argv=None):
         d = a.date or (meta.get("upload_date") and f"{meta['upload_date'][:4]}-{meta['upload_date'][4:6]}-{meta['upload_date'][6:]}")
         if not d:
             raise SystemExit("--date required")
-        locate(run, d, a.bbox, a.step, not a.no_open)
+        start = None
+        if a.start:
+            s0 = pd.Timestamp(a.start, tz="UTC").timestamp()
+            start = (s0 - a.start_window, s0 + a.start_window)
+            d = a.date or pd.Timestamp(a.start).strftime("%Y-%m-%d")
+        locate(run, d, a.bbox, a.step, not a.no_open, start)

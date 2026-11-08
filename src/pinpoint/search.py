@@ -12,7 +12,7 @@ Pipeline (after the source video's method):
 """
 
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 import pandas as pd
@@ -31,7 +31,10 @@ class Tolerances:
     offset_s: float = 10.0  # CPA-time offset error between events
     silence_rel: float = 0.6  # another pass closer than this x min(event slant) breaks silence
     shift_s: float = 6.0  # event-1 placement sweep for scoring
+    lock_slack_s: float = 2.0  # later events: play around the geometry-locked placement
     f0_rel: float = 0.04  # f0 sweep around the fitted value
+    airspeed: tuple = (0.85, 1.15)  # radial-velocity scale sweep (wind along track)
+    airspeed_steps: int = 7
 
 
 class Points:
@@ -120,16 +123,21 @@ def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
     return pd.DataFrame({"g": G, "t": tr_t[K] + D / C, "d": D, "gs": gs})
 
 
-def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None):
+def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, start=None):
+    """`start`: optional (lo, hi) unix bounds on when the recording began."""
     v0, v1 = ev.v - tol.speed, ev.v + tol.speed
     d0, d1 = ev.d * (1 - tol.slant_rel), ev.d * (1 + tol.slant_rel)
     fast = df[(df.gs >= v0) & (df.gs <= v1)]
+    if start is not None:
+        fast = fast[(fast.t >= start[0] + ev.tc - 900) & (fast.t <= start[1] + ev.tc + 900)]
     out = []
     for icao, seg in segments(fast):
         p = passes(seg, pts, d1, elev)
         if p is None:
             continue
         p = p[(p.d >= d0) & (p.gs >= v0) & (p.gs <= v1)]
+        if start is not None:
+            p = p[(p.t - ev.tc >= start[0]) & (p.t - ev.tc <= start[1])]
         if len(p):
             out.append(p.assign(icao=icao))
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["g", "t", "d", "gs", "icao"])
@@ -180,35 +188,82 @@ def _track(df, icao, t, span=600):
 
 
 def score_point(spec: Spec, tracks, events, lat, lon, tol: Tolerances, elev0=0.0, half=70.0):
-    """Locked multi-event score at one observer location. Returns (total, per-event, start_unix)."""
-    cur = [tr.curve(lat, lon, elev0) for tr in tracks]
-    # event 1: sweep placement shift and f0
-    tr0, ratio0, _, tcpa0, _ = cur[0]
-    e0 = events[0]
+    """Locked multi-event score at one observer location. Returns (total, per-event, start_unix).
+
+    Event 1 absorbs measurement error (placement shift, f0). Later events are placed by geometry
+    alone, with only `lock_slack_s` of play. Every event may scale its radial velocity by
+    `airspeed` (wind: Doppler follows speed through the air, ADS-B reports ground speed)."""
     rel = np.arange(-half, half + 1, spec.t[1] - spec.t[0])
-    shifts = np.arange(-tol.shift_s, tol.shift_s + 0.01, 0.5)
-    f0s = e0.f0 * (1 + np.linspace(-tol.f0_rel, tol.f0_rel, 33))
-    r0 = np.interp(tcpa0 + rel, tr0, ratio0)
-    best = (-np.inf, 0.0)
-    for sh in shifts:
-        t = e0.tc + sh + rel
-        s = _sweep_f0(spec, t, r0, f0s, e0.harmonics)
-        if s > best[0]:
-            best = (s, sh)
-    s0, sh = best
-    start = tcpa0 - (e0.tc + sh)
-    scores = [s0]
-    for (tr, ratio, _, tcpa, _), e in zip(cur[1:], events[1:]):
-        r = np.interp(tcpa + rel, tr, ratio)
-        t = tcpa - start + rel  # locked: geometry alone places it
-        scores.append(_sweep_f0(spec, t, r, e.f0 * (1 + np.linspace(-tol.f0_rel, tol.f0_rel, 33)), e.harmonics))
+    ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
+    start, scores = None, []
+    for tr, e in zip(tracks, events):
+        t_rec, ratio, _, tcpa, _ = tr.curve(lat, lon, elev0)
+        vr = np.interp(tcpa + rel, t_rec, C / ratio - C)
+        f0s = e.f0 * (1 + np.linspace(-tol.f0_rel, tol.f0_rel, 25))
+        if start is None:
+            base, shifts = e.tc, np.arange(-tol.shift_s, tol.shift_s + 0.01, 0.5)
+        else:
+            base, shifts = tcpa - start, np.arange(-tol.lock_slack_s, tol.lock_slack_s + 0.01, 0.5)
+        sc, sh = _sweep(spec, base + rel, vr, shifts, ks, f0s, e.harmonics)
+        if start is None:
+            start = tcpa - (e.tc + sh)
+        scores.append(sc)
     return float(sum(scores)), scores, float(start)
 
 
-def _sweep_f0(spec: Spec, t, ratio, f0s, harmonics):
-    f = f0s[:, None] * ratio[None, :]
-    vals = sum(np.nan_to_num(spec.sample(np.broadcast_to(t, f.shape), f * h), nan=0.0).clip(-2, 6) for h in harmonics)
-    return float((vals / len(harmonics)).mean(1).max())
+def _sweep(spec: Spec, t, vr, shifts, ks, f0s, harmonics):
+    """Best mean clipped brightness over placement shift x airspeed scale x f0. Returns (score, shift)."""
+    ratio = C / (C + ks[:, None] * vr[None, :])  # (k, t)
+    f = f0s[None, :, None] * ratio[:, None, :]  # (k, f0, t)
+    best, best_sh = -np.inf, 0.0
+    for sh in shifts:
+        tt = np.broadcast_to(t + sh, f.shape)
+        v = sum(np.nan_to_num(spec.sample(tt, f * h), nan=0.0).clip(-2, 6) for h in harmonics) / len(harmonics)
+        m = v.mean(-1).max()
+        if m > best:
+            best, best_sh = m, sh
+    return float(best), float(best_sh)
+
+
+def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: list[Event], df: pd.DataFrame,
+                 tol: Tolerances, top=300, log=print) -> pd.DataFrame:
+    """Re-rank the best point of the top combinations by how well *other* detected events are explained:
+    for each extra event, the best real aircraft whose geometry puts its flyover at that moment
+    (locked to the recording start found from event 1). No aircraft -> 0, so a spurious event costs nothing."""
+    n = len(primary)
+    combo = [f"icao{i + 1}" for i in range(n)]
+    best = cands.drop_duplicates(combo).head(top).copy()
+    log(f"verifying {len(best)} best combinations against {len(extra)} extra event(s)")
+    rel = np.arange(-70.0, 71.0, spec.t[1] - spec.t[0])
+    ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
+    extra_scores = np.zeros((len(best), len(extra)))
+    extra_icao = np.full((len(best), len(extra)), "", dtype=object)
+    for j, e in enumerate(extra):
+        f0s = e.f0 * (1 + np.linspace(-tol.f0_rel, tol.f0_rel, 25))
+        dmax = e.d * (1 + tol.slant_rel)
+        for i, r in enumerate(best.itertuples()):
+            when = r.start + e.tc
+            near = df[(df.t > when - 400) & (df.t < when + 400)
+                      & (np.abs(df.lat - r.lat) < dmax / DEG + 0.01)
+                      & (np.abs(df.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
+            for icao, seg in segments(near, min_len=10):
+                if icao in {getattr(r, c) for c in combo}:
+                    continue
+                tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
+                t_rec, ratio, _, tcpa, rmin = tr.curve(r.lat, r.lon)
+                if rmin > dmax or abs(tcpa - when) > tol.offset_s:
+                    continue
+                vr = np.interp(tcpa + rel, t_rec, C / ratio - C)
+                shifts = np.arange(-tol.lock_slack_s, tol.lock_slack_s + 0.01, 0.5)
+                sc, _ = _sweep(spec, tcpa - r.start + rel, vr, shifts, ks, f0s, e.harmonics)
+                if sc > extra_scores[i, j]:
+                    extra_scores[i, j], extra_icao[i, j] = sc, icao
+    for j in range(len(extra)):
+        best[f"x{j + 1}"] = extra_scores[:, j]
+        best[f"xicao{j + 1}"] = extra_icao[:, j]
+    best["base"] = best["score"]
+    best["score"] = best["base"] + extra_scores.sum(1)
+    return best.sort_values("score", ascending=False).reset_index(drop=True)
 
 
 def df_for(df, hits, n):
@@ -220,34 +275,37 @@ def df_for(df, hits, n):
 _W = {}
 
 
-def _init_worker(spec, events, tol, df, fine, elev):
-    _W.update(spec=spec, events=events, tol=tol, df=df, fine=fine, elev=elev)
+def _init_worker(spec, events, df, elev):
+    _W.update(spec=spec, events=events, df=df, elev=elev)
 
 
 def _score_job(job):
-    key, lats, lons = job
-    spec, events, tol, df, fine, elev = (_W[k] for k in ("spec", "events", "tol", "df", "fine", "elev"))
+    """Score points for one aircraft combination. `split` > 0 expands each coarse point into 4 at split/2 offsets."""
+    jid, key, lats, lons, tol, split = job
+    spec, events, df, elev = (_W[k] for k in ("spec", "events", "df", "elev"))
     tracks = [_track(df, icao, t) for icao, t in key]
-    off = (fine / 2) / DEG
+    off = (split / 2) / DEG
+    subs = ((-1, -1), (-1, 1), (1, -1), (1, 1)) if split else ((0, 0),)
     rows = []
     for la, lo in zip(lats, lons):
         k = np.cos(np.radians(la))
-        for dla, dlo in ((-off, -off / k), (-off, off / k), (off, -off / k), (off, off / k)):
+        for dla, dlo in ((a * off, b * off / k) for a, b in subs):
             e0 = 0.0 if elev is None else float(elev(np.array([la + dla]), np.array([lo + dlo]))[0])
             tot, per, start = score_point(spec, tracks, events, la + dla, lo + dlo, tol, e0)
             rows.append({"lat": la + dla, "lon": lo + dlo, "score": tot, **{f"s{i + 1}": p for i, p in enumerate(per)},
-                         "start": start, **{f"icao{i + 1}": a for i, (a, _) in enumerate(key)}})
+                         "start": start, **{f"icao{i + 1}": a for i, (a, _) in enumerate(key)}, "job": jid})
     return rows
 
 
 def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, fine=100.0,
-           tol: Tolerances = Tolerances(), elev=None, log=print, workers=10) -> pd.DataFrame:
+           tol: Tolerances = Tolerances(), elev=None, log=print, workers=10, start=None,
+           refine=300, per_combo=8) -> pd.DataFrame:
     pts = Points.grid(bbox, step)
     glat, glon = pts.lat, pts.lon
     log(f"grid: {len(pts):,} points at {step:.0f} m")
     cands = []
     for i, e in enumerate(events):
-        c = candidate_passes(df, e, pts, tol, elev)
+        c = candidate_passes(df, e, pts, tol, elev, start)
         log(f"event {i + 1}: {len(c):,} (point, pass) candidates from {c.icao.nunique() if len(c) else 0} aircraft")
         cands.append(c)
     hits = offset_filter(cands, events, tol)
@@ -264,12 +322,19 @@ def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, 
     small = spec.crop(events[0].tc - 300, events[-1].tc + 300, fmin, fmax)
     keys = [tuple((getattr(r, f"icao{i}"), getattr(r, f"t{i}")) for i in range(n)) for r in hits.itertuples()]
     hits = hits.assign(key=[tuple((a, round(t / 600)) for a, t in k) for k in keys], key_t=keys)
-    jobs = [(grp.key_t.iloc[0], glat[grp.g.to_numpy()], glon[grp.g.to_numpy()]) for _, grp in hits.groupby("key", sort=False)]
-    log(f"scoring {len(hits):,} hits in {len(jobs):,} aircraft combinations")
-    rows = []
-    with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(small, events, tol, df_for(df, hits, n), fine, elev)) as ex:
-        for part in ex.map(_score_job, jobs, chunksize=max(1, len(jobs) // (workers * 8))):
-            rows.extend(part)
+    fast = replace(tol, airspeed=(1.0, 1.0), airspeed_steps=1)
+    jobs = [(jid, grp.key_t.iloc[0], glat[grp.g.to_numpy()], glon[grp.g.to_numpy()], fast, fine)
+            for jid, (_, grp) in enumerate(hits.groupby("key", sort=False))]
+    log(f"scoring {len(hits):,} hits in {len(jobs):,} aircraft combinations (no wind)")
+    with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(small, events, df_for(df, hits, n), elev)) as ex:
+        first = pd.DataFrame([r for part in ex.map(_score_job, jobs, chunksize=max(1, len(jobs) // (workers * 8)))
+                              for r in part]).sort_values("score", ascending=False)
+        # stage 2: the best points of the top combinations, with the wind (airspeed) sweep
+        keep = first.drop_duplicates("job").head(refine)["job"]
+        top = first[first.job.isin(keep)].groupby("job", sort=False).head(per_combo)
+        jobs2 = [(jid, jobs[jid][1], g.lat.to_numpy(), g.lon.to_numpy(), tol, 0) for jid, g in top.groupby("job", sort=False)]
+        log(f"refining {len(top):,} points of the top {len(jobs2)} combinations with wind")
+        rows = [r for part in ex.map(_score_job, jobs2, chunksize=max(1, len(jobs2) // (workers * 4))) for r in part]
     out = pd.DataFrame(rows).sort_values("score", ascending=False).reset_index(drop=True)
-    log(f"scored {len(out):,} points at {fine:.0f} m")
+    log(f"scored {len(first):,} points at {fine:.0f} m; refined {len(out):,}")
     return out

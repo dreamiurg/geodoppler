@@ -5,7 +5,7 @@ distance R(te) arrives at te + R(te)/c, and is heard at f0 * c / (c + v_r(te)) w
 v_r is the source's radial velocity (positive = receding) at *emission* time.
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, replace
 
 import numpy as np
 from scipy.optimize import differential_evolution
@@ -65,15 +65,24 @@ def fit_event(spec: Spec, t0, t1, fmin, fmax, harmonics=(1,), seed=0) -> Event:
     return Event(t0, t1, float(f0), float(v), float(d), float(tc), float(-r.fun), tuple(harmonics))
 
 
+def _fit_window(args):
+    box, t0, t1, fmin, fmax = args
+    return fit_event(box, t0, t1, fmin, fmax)
+
+
 def detect_events(spec: Spec, fmin=40.0, fmax=400.0, win=160.0, step=40.0, min_score=1.2,
-                  log=lambda m: None) -> list[Event]:
+                  log=lambda m: None, workers=10) -> list[Event]:
     """Slide a window over the recording, fit a flyover in each, keep confident, distinct ones.
     shortcut: scores only the fitted line (no harmonics); pass explicit boxes for weak events."""
-    found = []
+    from concurrent.futures import ProcessPoolExecutor
+
     t_end = spec.t[-1]
-    for t0 in np.arange(spec.t[0], max(spec.t[0] + 1, t_end - win + step), step):
-        t1 = min(t0 + win, t_end)
-        e = fit_event(spec, t0, t1, fmin, fmax)
+    wins = [(t0, min(t0 + win, t_end)) for t0 in np.arange(spec.t[0], max(spec.t[0] + 1, t_end - win + step), step)]
+    jobs = [(spec.crop(t0 - 6, t1 + 6, fmin * 0.85, fmax * 1.15), t0, t1, fmin, fmax) for t0, t1 in wins]
+    with ProcessPoolExecutor(workers) as ex:
+        fits = list(ex.map(_fit_window, jobs))
+    found = []
+    for (t0, t1), e in zip(wins, fits):
         # CPA must sit inside the window's middle so each flyover is judged with both flanks visible
         inner = t0 + 0.25 * (t1 - t0) <= e.tc <= t1 - 0.25 * (t1 - t0)
         ok = e.score >= min_score and e.v >= 25 and inner and e.d < 9000
@@ -85,4 +94,12 @@ def detect_events(spec: Spec, fmin=40.0, fmax=400.0, win=160.0, step=40.0, min_s
     for e in found:
         if all(abs(e.tc - k.tc) > 60 for k in keep):
             keep.append(e)
-    return sorted(keep, key=lambda e: e.tc)
+    return sorted((add_harmonics(spec, e) for e in keep), key=lambda e: e.tc)
+
+
+def add_harmonics(spec: Spec, e: Event, rel=0.35) -> Event:
+    """Also score 2x/3x lines when they are clearly there: more curve to match = sharper scoring."""
+    t = np.linspace(e.t0, e.t1, 400)
+    f = ideal_curve(t, e.f0, e.v, e.d, e.tc)
+    hs = tuple(h for h in (1, 2, 3) if h == 1 or curve_score(spec, t, f * h) >= rel * e.score)
+    return replace(e, harmonics=hs)
