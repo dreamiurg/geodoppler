@@ -62,12 +62,14 @@ def run_one(c, radius):
     if level is not None and level < -70:
         return {**rec, "status": "silent audio"}
     code, _, err = sh("events", str(run))
-    evs = json.loads((run / "events.json").read_text()) if (run / "events.json").exists() else []
+    evs = json.loads((run / "events.json").read_text()) if not code and (run / "events.json").exists() else []
     rec["events"] = [round(e["tc"]) for e in evs]
-    if code or not evs:
-        return {**rec, "status": "no Doppler events", "detail": err.strip().splitlines()[-1:]}
+    if code:
+        return {**rec, "status": "events failed", "detail": err.strip().splitlines()[-1:]}
+    if not evs:
+        return {**rec, "status": "no Doppler events"}
     bbox = f"{c['lat']},{c['lon']},{radius}"
-    code, _, err = sh("locate", str(run), "--date", date, "--days", str(days), "--bbox", bbox, "--no-open",
+    code, _, err = sh("locate", str(run), "--date", date, "--days", str(days), f"--bbox={bbox}", "--no-open",
                       timeout=6 * 3600)
     rec["minutes"] = round((time.time() - t) / 60, 1)
     if code:
@@ -94,19 +96,24 @@ def main():
         try:
             done[c["id"]] = run_one(c, a.radius_km)
         except subprocess.TimeoutExpired:
-            done[c["id"]] = {"id": c["id"], "url": c["url"], "status": "timeout"}
+            done[c["id"]] = {"id": c["id"], "url": c["url"], "title": c["title"], "status": "timeout"}
+        except Exception as e:  # one broken candidate must not stop the batch
+            done[c["id"]] = {"id": c["id"], "url": c["url"], "title": c["title"], "status": "error", "detail": [repr(e)]}
         print(json.dumps(done[c["id"]]), flush=True)
         out_p.write_text(json.dumps(list(done.values()), indent=2))
     write_md(list(done.values()))
 
 
 def write_md(rows):
-    lines = ["| Video | Date | Status | Error | Score (runner-up) | Start found / known |", "|---|---|---|---|---|---|"]
+    lines = ["| Video | Date | Status | Error | Score (runner-up) | Margin | Start found / known |",
+             "|---|---|---|---|---|---|---|"]
     for r in rows:
         err = f"{r['error_km']} km" if "error_km" in r else ""
         sc = f"{r['score']} ({r['runner_up']})" if "score" in r else ""
+        mg = f"{(r['score'] - r['runner_up']) / r['runner_up']:.2%}" if r.get("runner_up") else ""
+        title = (r.get('title') or r['id'])[:50].replace("|", "/")
         st = f"{r.get('found_start', '')} / {r.get('section_start_utc') or '?'}" if "found_start" in r else ""
-        lines.append(f"| [{(r.get('title') or r['id'])[:50]}]({r['url']}) | {r.get('date_utc', '')} | {r['status']} | {err} | {sc} | {st} |")
+        lines.append(f"| [{title}]({r['url']}) | {r.get('date_utc', '')} | {r['status']} | {err} | {sc} | {mg} | {st} |")
     (HERE / "results.md").write_text("\n".join(lines) + "\n")
 
 

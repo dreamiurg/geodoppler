@@ -71,20 +71,22 @@ def fetch(url: str, section_start: float = 0.0) -> Path:
 
 def load_spec(run: Path) -> audio.Spec:
     cache = run / "spec.npz"
+    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
     if cache.exists():
         z = np.load(cache)
-        return audio.Spec(z["t"], z["f"], z["S"])
-    return _build_spec(run, cache)
+        if "start" in z and float(z["start"]) == float(meta.get("section_start_s") or 0):
+            return audio.Spec(z["t"], z["f"], z["S"])
+    return _build_spec(run, cache, meta)
 
 
-def _build_spec(run: Path, cache: Path) -> audio.Spec:
+def _build_spec(run: Path, cache: Path, meta: dict) -> audio.Spec:
     # shortcut: first MAX_MINUTES only; long livestreams would need chunked spectrograms
-    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
-    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60, start_s=meta.get("section_start_s") or 0)
+    start = float(meta.get("section_start_s") or 0)
+    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60, start_s=start)
     level = float(20 * np.log10(np.sqrt(np.mean(x.astype(np.float64) ** 2)) + 1e-12))
     (run / "level_db").write_text(f"{level:.1f}\n")
     sp = audio.suppress_steady(audio.spectrogram(x))
-    np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S)
+    np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S, start=start)
     return sp
 
 
