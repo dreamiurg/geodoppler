@@ -22,9 +22,11 @@ import numpy as np
 import pandas as pd
 
 from . import adsb, audio, doppler, mapview, search
+from .dem import Elevation
 
 DATA = Path(os.environ.get("PINPOINT_DATA", Path.home() / ".cache" / "pinpoint"))
 RUNS = Path(os.environ.get("PINPOINT_RUNS", "runs"))
+MAX_MINUTES = float(os.environ.get("PINPOINT_MAX_MINUTES", 120))
 REGIONS = {"conus": adsb.CONUS}
 META_KEYS = ["id", "title", "uploader", "upload_date", "duration", "description", "location", "webpage_url", "tags"]
 
@@ -50,7 +52,8 @@ def fetch(url: str) -> Path:
     (run / "meta.json").write_text(json.dumps({k: info.get(k) for k in META_KEYS}, indent=2))
     if not list(run.glob("audio.*")):
         log(f"downloading audio for {info['id']}: {info.get('title')!r}")
-        ytdlp("-q", "--no-playlist", "-f", "bestaudio/best", "-o", str(run / "audio.%(ext)s"), info["webpage_url"])
+        cut = ["--download-sections", f"*0-{int(MAX_MINUTES * 60)}"] if (info.get("duration") or 0) > MAX_MINUTES * 60 else []
+        ytdlp("-q", "--no-playlist", "-f", "bestaudio/best", *cut, "-o", str(run / "audio.%(ext)s"), info["webpage_url"])
     spec = load_spec(run)
     overview(spec, run)
     log(f"run dir: {run}")
@@ -62,7 +65,8 @@ def load_spec(run: Path) -> audio.Spec:
     if cache.exists():
         z = np.load(cache)
         return audio.Spec(z["t"], z["f"], z["S"])
-    x = audio.load(str(next(run.glob("audio.*"))))
+    # shortcut: first MAX_MINUTES only; long livestreams would need chunked spectrograms
+    x = audio.load(str(next(run.glob("audio.*"))), max_s=MAX_MINUTES * 60)
     sp = audio.suppress_steady(audio.spectrogram(x))
     np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S)
     return sp
@@ -201,12 +205,13 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None) ->
     log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
     df = pd.read_parquet(adsb.ensure_day(date, DATA))
     # shortcut: one UTC day of tracks; a recording that straddles midnight needs the next day too
+    elev = Elevation(DATA)
     res = []
     for tb in tiles(bbox):
         pad = 0.15
         sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
         log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
-        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start)
+        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start, elev=elev)
         if len(r):
             res.append(r)
     if not res:
@@ -214,7 +219,7 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None) ->
     cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)
     cands.to_parquet(run / "candidates.parquet")
     if extra:
-        cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log)
+        cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log, elev=elev)
         cands.to_parquet(run / "verified.parquet")
     return report(run, cands, df, evs, date, open_map, extra)
 

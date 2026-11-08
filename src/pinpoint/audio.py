@@ -9,10 +9,11 @@ import scipy.signal as ss
 SR = 4000  # aircraft prop fundamentals sit well below 1 kHz
 
 
-def load(path: str, sr: int = SR) -> np.ndarray:
-    """Decode any media file to mono float32 at `sr` via ffmpeg."""
+def load(path: str, sr: int = SR, max_s: float | None = None) -> np.ndarray:
+    """Decode any media file to mono float32 at `sr` via ffmpeg (first `max_s` seconds if given)."""
+    limit = ["-t", str(max_s)] if max_s else []
     raw = subprocess.run(
-        ["ffmpeg", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
+        ["ffmpeg", "-loglevel", "error", "-i", path, *limit, "-ac", "1", "-ar", str(sr), "-f", "f32le", "-"],
         check=True, capture_output=True,
     ).stdout
     return np.frombuffer(raw, dtype=np.float32)
@@ -41,7 +42,7 @@ class Spec:
 
 
 def spectrogram(x: np.ndarray, sr: int = SR, win_s: float = 2.0, hop_s: float = 0.5,
-                fmin: float = 20, fmax: float = 1000) -> Spec:
+                fmin: float = 20, fmax: float = 600) -> Spec:
     n = int(win_s * sr)
     f, t, P = ss.spectrogram(x, sr, nperseg=n, noverlap=n - int(hop_s * sr), window="hann",
                              nfft=2 * n)

@@ -13,6 +13,7 @@ dependencies = [
     "orjson>=3.11.9",
     "pandas>=3.0.5",
     "pyarrow>=25.0.0",
+    "rasterio>=1.5.0",
     "scipy>=1.18.0",
 ]
 

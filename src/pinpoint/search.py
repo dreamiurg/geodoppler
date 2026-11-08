@@ -226,7 +226,7 @@ def _sweep(spec: Spec, t, vr, shifts, ks, f0s, harmonics):
 
 
 def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: list[Event], df: pd.DataFrame,
-                 tol: Tolerances, top=300, log=print) -> pd.DataFrame:
+                 tol: Tolerances, top=300, log=print, elev=None) -> pd.DataFrame:
     """Re-rank the best point of the top combinations by how well *other* detected events are explained:
     for each extra event, the best real aircraft whose geometry puts its flyover at that moment
     (locked to the recording start found from event 1). No aircraft -> 0, so a spurious event costs nothing."""
@@ -243,6 +243,7 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
         dmax = e.d * (1 + tol.slant_rel)
         for i, r in enumerate(best.itertuples()):
             when = r.start + e.tc
+            e0 = 0.0 if elev is None else float(elev([r.lat], [r.lon])[0])
             near = df[(df.t > when - 400) & (df.t < when + 400)
                       & (np.abs(df.lat - r.lat) < dmax / DEG + 0.01)
                       & (np.abs(df.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
@@ -250,7 +251,7 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
                 if icao in {getattr(r, c) for c in combo}:
                     continue
                 tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
-                t_rec, ratio, _, tcpa, rmin = tr.curve(r.lat, r.lon)
+                t_rec, ratio, _, tcpa, rmin = tr.curve(r.lat, r.lon, e0)
                 if rmin > dmax or abs(tcpa - when) > tol.offset_s:
                     continue
                 vr = np.interp(tcpa + rel, t_rec, C / ratio - C)
