@@ -262,9 +262,13 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
         tracks.append({"path": g[["lat", "lon"]].round(5).values.tolist(),
                        "label": f"{icao} {types.get(icao, '')}: heard at {tc:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
     meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    margin = None if runner is None else (best.score - runner.score) / runner.score
+    # validation: correct answers had 18-33 % margins, wrong ones 0.6-7 %
+    confidence = "unknown" if margin is None else "high" if margin >= 0.15 else "low"
     result = {
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
         "runner_up_score": None if runner is None else round(float(runner.score), 3),
+        "margin": None if margin is None else round(float(margin), 3), "confidence": confidence,
         "recording_start_utc": f"{start:%Y-%m-%d %H:%M:%S}",
         "aircraft": [{"heard_at_s": round(tc, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
         "events_unexplained": [round(e.tc, 1) for j, e in enumerate(extra) if not best.get(f"xicao{j + 1}")],
@@ -274,6 +278,7 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
     (run / "result.json").write_text(json.dumps(result, indent=2))
     info = {
         "Best estimate": f"<a href='{result['google_maps']}' target=_blank>{result['lat']}, {result['lon']}</a>",
+        "Confidence": f"{confidence} (margin {result['margin']:.0%} over the next aircraft combination)" if margin is not None else confidence,
         "Score": f"{result['score']} (next aircraft combination: {result['runner_up_score']})",
         "Recording started": result["recording_start_utc"] + " UTC",
         "Aircraft heard": "<br>".join(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}" for a in result["aircraft"]),
@@ -281,7 +286,7 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
     }
     title = meta.get("title") or run.name
     path = mapview.render(cands, run / "map.html", title, info, tracks)
-    log(f"best: {result['lat']}, {result['lon']}  score {result['score']} (runner-up {result['runner_up_score']})")
+    log(f"best: {result['lat']}, {result['lon']}  score {result['score']} (runner-up {result['runner_up_score']}), confidence {confidence}")
     log(f"map: {path.resolve()}")
     if open_map:
         webbrowser.open(path.resolve().as_uri())

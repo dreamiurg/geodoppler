@@ -50,12 +50,14 @@ uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox conus               # 
 ```
 
 Recording that may cross midnight UTC: add `--days 2`. Known start time (on-screen clock, livestream
-start, phone call): `--start 2026-09-08T20:17:30` makes even one event enough for `--bbox conus`.
+start, phone call): add `--start 2026-09-08T20:17:30`. One event plus a known time is NOT enough for
+`--bbox conus` (tested: wrong state, 0.6 % margin, 5.5 h); it can work inside a small region.
 
-Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. Judge confidence from
-`score` vs `runner_up_score` (best of the *next aircraft combination*). A clear margin (>15%) with both
-event scores high means the match is real. A thin margin means: refit events, add a third event, or widen
-the date (try the previous year if the upload year has no match).
+Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. `result.json` has `confidence`:
+`high` when `score` beats the best *other aircraft combination* by >= 15 %, else `low`. In validation every
+correct answer had 18-33 % and every wrong one 0.6-7 %. Report a `low` result as "no reliable acoustic
+fix" and fall back to section 3; mention the acoustic guess only as a weak hint. Boats, cars and trains
+also make Doppler curves; a recording full of them (marinas, roads) gives `low` results.
 
 ## 3. Fallback: metadata and visual clues
 
