@@ -56,7 +56,7 @@ with no known time is refused (tested: 69 km off, 0.8 % margin): go to section 3
 
 Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. `result.json` has `confidence`:
 `high` when `score` beats the best *other aircraft combination* by >= 15 %, else `low`. In validation every
-correct answer had 18-33 % and every wrong one 0.6-7 %. Report a `low` result as "no reliable acoustic
+correct answer had 18-50 % and every wrong one 0.04-8 %. Report a `low` result as "no reliable acoustic
 fix" and fall back to section 3; mention the acoustic guess only as a weak hint. Boats, cars and trains
 also make Doppler curves; a recording full of them (marinas, roads) gives `low` results.
 

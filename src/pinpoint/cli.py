@@ -266,7 +266,7 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
                        "label": f"{icao} {types.get(icao, '')}: heard at {tc:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
     meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
     margin = None if runner is None else (best.score - runner.score) / runner.score
-    # validation: correct answers had 18-33 % margins, wrong ones 0.6-7 %
+    # validation: correct answers had 18-50 % margins, wrong ones 0.04-8 %
     confidence = "unknown" if margin is None else "high" if margin >= 0.15 else "low"
     result = {
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
