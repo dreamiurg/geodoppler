@@ -45,14 +45,18 @@ def ytdlp(*args) -> str:
     return subprocess.run([exe, "--no-warnings", *args], check=True, capture_output=True, text=True).stdout
 
 
-def fetch(url: str) -> Path:
+def fetch(url: str, section_start: float = 0.0) -> Path:
+    """`section_start`: seconds into the video to start analysing (long livestreams: pick daylight)."""
     info = json.loads(ytdlp("--dump-single-json", "--skip-download", "--no-playlist", url))
     run = RUNS / info["id"]
     run.mkdir(parents=True, exist_ok=True)
-    (run / "meta.json").write_text(json.dumps({k: info.get(k) for k in META_KEYS}, indent=2))
+    (run / "meta.json").write_text(json.dumps({**{k: info.get(k) for k in META_KEYS},
+                                              "release_timestamp": info.get("release_timestamp"),
+                                              "section_start_s": section_start}, indent=2))
     if not list(run.glob("audio.*")):
         log(f"downloading audio for {info['id']}: {info.get('title')!r}")
-        cut = ["--download-sections", f"*0-{int(MAX_MINUTES * 60)}"] if (info.get("duration") or 0) > MAX_MINUTES * 60 else []
+        s0, s1 = int(section_start), int(section_start + MAX_MINUTES * 60)
+        cut = ["--download-sections", f"*{s0}-{s1}"] if s0 or (info.get("duration") or 0) > s1 else []
         ytdlp("-q", "--no-playlist", "-f", "bestaudio/best", *cut, "-o", str(run / "audio.%(ext)s"), info["webpage_url"])
     spec = load_spec(run)
     overview(spec, run)
@@ -191,7 +195,7 @@ def tiles(bbox, size=2.0):
             yield (a, b, min(a + size, lat1), min(b + size, lon1))
 
 
-def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None) -> dict:
+def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, days=1) -> dict:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise SystemExit(f"--date must be YYYY-MM-DD, got {date!r}")
     sp, all_evs = load_spec(run), load_events(run)
@@ -203,8 +207,9 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None) ->
     log(f"searching with events at {', '.join(f'{e.tc:.0f}s' for e in evs)}; verifying with "
         f"{', '.join(f'{e.tc:.0f}s' for e in extra) or 'none'}")
     log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
-    df = pd.read_parquet(adsb.ensure_day(date, DATA))
-    # shortcut: one UTC day of tracks; a recording that straddles midnight needs the next day too
+    dates = [(pd.Timestamp(date) + pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
+    df = pd.concat([pd.read_parquet(adsb.ensure_day(d, DATA)) for d in dates], ignore_index=True)
+    df = df.astype({"icao": "category", "type": "category"}).sort_values(["icao", "t"], kind="stable")
     elev = Elevation(DATA)
     res = []
     for tb in tiles(bbox):
@@ -275,6 +280,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="pinpoint", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("fetch"); f.add_argument("url")
+    f.add_argument("--section-start", type=float, default=0, help="seconds into the video to start analysing")
     fr = sub.add_parser("frames", help="extract stills for visual clues"); fr.add_argument("run", type=Path)
     fr.add_argument("-n", type=int, default=24)
     pn = sub.add_parser("pin", help="map a location judged from non-acoustic clues")
@@ -290,6 +296,7 @@ def main(argv=None):
         p.add_argument("--bbox", type=parse_bbox, default="conus",
                        help="lat0,lon0,lat1,lon1 | lat,lon,radius_km | conus")
         p.add_argument("--step", type=float, default=200.0, help="coarse grid metres")
+        p.add_argument("--days", type=int, default=1, help="consecutive UTC days of ADS-B from --date (recording across midnight: 2)")
         p.add_argument("--start", help="known recording start, UTC ISO time, e.g. 2026-09-08T20:17:40")
         p.add_argument("--start-window", type=float, default=120, help="+/- seconds around --start")
         p.add_argument("--no-open", action="store_true")
@@ -298,7 +305,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.cmd == "fetch":
-        fetch(a.url)
+        fetch(a.url, a.section_start)
     elif a.cmd == "frames":
         frames(a.run, a.n)
     elif a.cmd == "pin":
@@ -318,4 +325,4 @@ def main(argv=None):
             s0 = pd.Timestamp(a.start, tz="UTC").timestamp()
             start = (s0 - a.start_window, s0 + a.start_window)
             d = a.date or pd.Timestamp(a.start).strftime("%Y-%m-%d")
-        locate(run, d, a.bbox, a.step, not a.no_open, start)
+        locate(run, d, a.bbox, a.step, not a.no_open, start, a.days)
