@@ -11,6 +11,7 @@ Pipeline (after the source video's method):
      every event's f0 absorb measurement error; later events' times stay locked to geometry.
 """
 
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
@@ -33,12 +34,40 @@ class Tolerances:
     f0_rel: float = 0.04  # f0 sweep around the fitted value
 
 
-def grid(bbox, step_m):
-    lat0, lon0, lat1, lon1 = bbox
-    dlat = step_m / DEG
-    dlon = step_m / (DEG * np.cos(np.radians((lat0 + lat1) / 2)))
-    la, lo = np.meshgrid(np.arange(lat0, lat1, dlat), np.arange(lon0, lon1, dlon), indexing="ij")
-    return la.ravel(), lo.ravel()
+class Points:
+    """Observer locations. A regular grid answers window queries by arithmetic, not masking."""
+
+    def __init__(self, lat, lon, regular=None, mask=None):
+        self.lat, self.lon, self._reg, self.mask = np.asarray(lat), np.asarray(lon), regular, mask
+
+    def subset(self, idx):
+        """Same grid, but window queries only return these indices."""
+        mask = np.zeros(len(self.lat), bool)
+        mask[idx] = True
+        return Points(self.lat, self.lon, self._reg, mask)
+
+    @classmethod
+    def grid(cls, bbox, step_m):
+        lat0, lon0, lat1, lon1 = bbox
+        dlat = step_m / DEG
+        dlon = step_m / (DEG * np.cos(np.radians((lat0 + lat1) / 2)))
+        la, lo = np.arange(lat0, lat1, dlat), np.arange(lon0, lon1, dlon)
+        LA, LO = np.meshgrid(la, lo, indexing="ij")
+        return cls(LA.ravel(), LO.ravel(), (lat0, lon0, dlat, dlon, len(la), len(lo)))
+
+    def __len__(self):
+        return len(self.lat)
+
+    def window(self, la0, la1, lo0, lo1):
+        if self._reg is None:
+            return np.flatnonzero((self.lat >= la0) & (self.lat <= la1) & (self.lon >= lo0) & (self.lon <= lo1))
+        lat0, lon0, dlat, dlon, n, m = self._reg
+        i0, i1 = max(0, int(np.ceil((la0 - lat0) / dlat))), min(n - 1, int(np.floor((la1 - lat0) / dlat)))
+        j0, j1 = max(0, int(np.ceil((lo0 - lon0) / dlon))), min(m - 1, int(np.floor((lo1 - lon0) / dlon)))
+        if i0 > i1 or j0 > j1:
+            return np.empty(0, int)
+        idx = (np.arange(i0, i1 + 1)[:, None] * m + np.arange(j0, j1 + 1)[None, :]).ravel()
+        return idx if self.mask is None else idx[self.mask[idx]]
 
 
 def segments(df: pd.DataFrame, max_gap=60.0, min_len=20):
@@ -51,50 +80,53 @@ def segments(df: pd.DataFrame, max_gap=60.0, min_len=20):
                 yield str(icao), g.iloc[s]
 
 
-def passes(seg: pd.DataFrame, glat, glon, dmax, elev=None):
-    """For grid points within dmax of a pass: delayed CPA time, slant distance, ground speed at CPA."""
+def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
+    """For points within dmax of a pass: delayed CPA time, slant distance, ground speed at CPA.
+    shortcut: one CPA per point per pass (global min); a pass that circles a point twice keeps only the closest."""
     tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
     tr_t, tr_lat, tr_lon, tr_alt = tr.t[tr.ok][::2], tr.lat[tr.ok][::2], tr.lon[tr.ok][::2], tr.alt[tr.ok][::2]
     if len(tr_t) < 3:
         return None
-    pad_lat = dmax / DEG
-    pad_lon = dmax / (DEG * np.cos(np.radians(tr_lat.mean())))
-    m = ((glat > tr_lat.min() - pad_lat) & (glat < tr_lat.max() + pad_lat)
-         & (glon > tr_lon.min() - pad_lon) & (glon < tr_lon.max() + pad_lon))
-    gi = np.flatnonzero(m)
-    if not len(gi):
-        return None
     lat_c, lon_c = tr_lat.mean(), tr_lon.mean()
-    gx, gy, _ = enu(glat[gi], glon[gi], 0, lat_c, lon_c)
+    pad_lat, pad_lon = dmax / DEG, dmax / (DEG * np.cos(np.radians(lat_c)))
     ax, ay, _ = enu(tr_lat, tr_lon, 0, lat_c, lon_c)
-    ge = np.zeros(len(gi)) if elev is None else elev(glat[gi], glon[gi])
-    best_d = np.full(len(gi), np.inf)
-    best_k = np.zeros(len(gi), int)
-    for k0 in range(0, len(tr_t), 256):  # chunk to bound memory
-        sl = slice(k0, k0 + 256)
-        d2 = ((gx[:, None] - ax[None, sl]) ** 2 + (gy[:, None] - ay[None, sl]) ** 2
-              + (tr_alt[None, sl] - ge[:, None]) ** 2)
+    G, D, K = [], [], []
+    for k0 in range(0, len(tr_t), chunk):
+        sl = slice(k0, k0 + chunk)
+        gi = pts.window(tr_lat[sl].min() - pad_lat, tr_lat[sl].max() + pad_lat,
+                        tr_lon[sl].min() - pad_lon, tr_lon[sl].max() + pad_lon)
+        if not len(gi):
+            continue
+        gx, gy, _ = enu(pts.lat[gi], pts.lon[gi], 0, lat_c, lon_c)
+        ge = 0.0 if elev is None else elev(pts.lat[gi], pts.lon[gi])[:, None]
+        d2 = (gx[:, None] - ax[None, sl]) ** 2 + (gy[:, None] - ay[None, sl]) ** 2 + (tr_alt[None, sl] - ge) ** 2
         k = d2.argmin(1)
         dk = np.sqrt(d2[np.arange(len(gi)), k])
-        better = dk < best_d
-        best_d[better], best_k[better] = dk[better], k[better] + k0
-    keep = best_d <= dmax
+        m = dk <= dmax
+        G.append(gi[m]); D.append(dk[m]); K.append(k[m] + k0)
+    G = np.concatenate(G) if G else np.empty(0, int)
+    if not len(G):
+        return None
+    D, K = np.concatenate(D), np.concatenate(K)
+    o = np.lexsort((D, G))
+    first = np.r_[True, G[o][1:] != G[o][:-1]]
+    G, D, K = G[o][first], D[o][first], K[o][first]
     # CPA at the ends of the pass is a truncation artefact, not a real closest approach
-    keep &= (best_k > 0) & (best_k < len(tr_t) - 1)
+    keep = (K > 0) & (K < len(tr_t) - 1)
     if not keep.any():
         return None
-    k = best_k[keep]
-    gs = np.interp(tr_t[k], seg.t.to_numpy(), seg.gs.to_numpy())
-    return pd.DataFrame({"g": gi[keep], "t": tr_t[k] + best_d[keep] / C, "d": best_d[keep], "gs": gs})
+    G, D, K = G[keep], D[keep], K[keep]
+    gs = np.interp(tr_t[K], seg.t.to_numpy(), seg.gs.to_numpy())
+    return pd.DataFrame({"g": G, "t": tr_t[K] + D / C, "d": D, "gs": gs})
 
 
-def candidate_passes(df, ev: Event, glat, glon, tol: Tolerances, elev=None):
+def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None):
     v0, v1 = ev.v - tol.speed, ev.v + tol.speed
     d0, d1 = ev.d * (1 - tol.slant_rel), ev.d * (1 + tol.slant_rel)
     fast = df[(df.gs >= v0) & (df.gs <= v1)]
     out = []
     for icao, seg in segments(fast):
-        p = passes(seg, glat, glon, d1, elev)
+        p = passes(seg, pts, d1, elev)
         if p is None:
             continue
         p = p[(p.d >= d0) & (p.gs >= v0) & (p.gs <= v1)]
@@ -114,25 +146,25 @@ def offset_filter(cands: list[pd.DataFrame], events: list[Event], tol: Tolerance
     return cur.reset_index(drop=True)
 
 
-def silence_filter(hits, df, events, glat, glon, tol: Tolerances, elev=None):
+def silence_filter(hits, df, events, pts: Points, tol: Tolerances, elev=None):
     """Drop points where another non-jet aircraft would have passed close between events."""
     if hits.empty:
         return hits
     n = len(events)
     g = np.unique(hits.g.to_numpy())
-    sub_lat, sub_lon = glat[g], glon[g]
+    sub = pts.subset(g)
     thr = tol.silence_rel * min(e.d for e in events)
     t_lo, t_hi = hits.t0.min(), hits[f"t{n - 1}"].max()
     window = df[(df.t >= t_lo - 300) & (df.t <= t_hi + 300)]
     others = []
     for icao, seg in segments(window, min_len=5):
-        p = passes(seg, sub_lat, sub_lon, thr, elev)
+        p = passes(seg, sub, thr, elev)
         if p is not None:
-            others.append(p.assign(icao=icao, g=g[p.g.to_numpy()]))
+            others.append(p.assign(icao=icao))
     if not others:
         return hits
-    o = pd.concat(others, ignore_index=True)
-    m = hits.reset_index().merge(o, on="g", suffixes=("", "_o"))
+    o = pd.concat(others, ignore_index=True)[["g", "t", "icao"]].rename(columns={"t": "t_o", "icao": "icao_o"})
+    m = hits.reset_index().merge(o, on="g")
     own = np.zeros(len(m), bool)
     for i in range(n):
         own |= m.icao_o.to_numpy() == m[f"icao{i}"].to_numpy()
@@ -179,37 +211,65 @@ def _sweep_f0(spec: Spec, t, ratio, f0s, harmonics):
     return float((vals / len(harmonics)).mean(1).max())
 
 
+def df_for(df, hits, n):
+    """Only the tracks scoring needs, to keep worker start-up cheap."""
+    want = set().union(*(set(hits[f"icao{i}"]) for i in range(n)))
+    return df[df.icao.isin(want)]
+
+
+_W = {}
+
+
+def _init_worker(spec, events, tol, df, fine, elev):
+    _W.update(spec=spec, events=events, tol=tol, df=df, fine=fine, elev=elev)
+
+
+def _score_job(job):
+    key, lats, lons = job
+    spec, events, tol, df, fine, elev = (_W[k] for k in ("spec", "events", "tol", "df", "fine", "elev"))
+    tracks = [_track(df, icao, t) for icao, t in key]
+    off = (fine / 2) / DEG
+    rows = []
+    for la, lo in zip(lats, lons):
+        k = np.cos(np.radians(la))
+        for dla, dlo in ((-off, -off / k), (-off, off / k), (off, -off / k), (off, off / k)):
+            e0 = 0.0 if elev is None else float(elev(np.array([la + dla]), np.array([lo + dlo]))[0])
+            tot, per, start = score_point(spec, tracks, events, la + dla, lo + dlo, tol, e0)
+            rows.append({"lat": la + dla, "lon": lo + dlo, "score": tot, **{f"s{i + 1}": p for i, p in enumerate(per)},
+                         "start": start, **{f"icao{i + 1}": a for i, (a, _) in enumerate(key)}})
+    return rows
+
+
 def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, fine=100.0,
-           tol: Tolerances = Tolerances(), elev=None, log=print) -> pd.DataFrame:
-    glat, glon = grid(bbox, step)
-    log(f"grid: {len(glat):,} points at {step:.0f} m")
+           tol: Tolerances = Tolerances(), elev=None, log=print, workers=10) -> pd.DataFrame:
+    pts = Points.grid(bbox, step)
+    glat, glon = pts.lat, pts.lon
+    log(f"grid: {len(pts):,} points at {step:.0f} m")
     cands = []
     for i, e in enumerate(events):
-        c = candidate_passes(df, e, glat, glon, tol, elev)
+        c = candidate_passes(df, e, pts, tol, elev)
         log(f"event {i + 1}: {len(c):,} (point, pass) candidates from {c.icao.nunique() if len(c) else 0} aircraft")
         cands.append(c)
     hits = offset_filter(cands, events, tol)
     log(f"offset filter: {len(hits):,} hits at {hits.g.nunique() if len(hits) else 0:,} points")
     if len(events) > 1:
-        hits = silence_filter(hits, df, events, glat, glon, tol, elev)
+        hits = silence_filter(hits, df, events, pts, tol, elev)
         log(f"silence filter: {len(hits):,} hits at {hits.g.nunique() if len(hits) else 0:,} points")
     if hits.empty:
         return pd.DataFrame()
     n = len(events)
-    tracks = {}
+    # crop the spectrogram to what scoring can touch, so workers get a small copy
+    fmax = max(e.f0 * max(e.harmonics) for e in events) * (1.6 + tol.f0_rel)
+    fmin = min(e.f0 for e in events) * (0.6 - tol.f0_rel)
+    small = spec.crop(events[0].tc - 300, events[-1].tc + 300, fmin, fmax)
+    keys = [tuple((getattr(r, f"icao{i}"), getattr(r, f"t{i}")) for i in range(n)) for r in hits.itertuples()]
+    hits = hits.assign(key=[tuple((a, round(t / 600)) for a, t in k) for k in keys], key_t=keys)
+    jobs = [(grp.key_t.iloc[0], glat[grp.g.to_numpy()], glon[grp.g.to_numpy()]) for _, grp in hits.groupby("key", sort=False)]
+    log(f"scoring {len(hits):,} hits in {len(jobs):,} aircraft combinations")
     rows = []
-    off = (fine / 2) / DEG
-    for r in hits.itertuples():
-        key = tuple((getattr(r, f"icao{i}"), round(getattr(r, f"t{i}") / 600)) for i in range(n))
-        if key not in tracks:
-            tracks[key] = [_track(df, getattr(r, f"icao{i}"), getattr(r, f"t{i}")) for i in range(n)]
-        la, lo = glat[r.g], glon[r.g]
-        k = np.cos(np.radians(la))
-        for dla, dlo in ((-off, -off / k), (-off, off / k), (off, -off / k), (off, off / k)):
-            e0 = 0.0 if elev is None else float(elev(np.array([la + dla]), np.array([lo + dlo]))[0])
-            tot, per, start = score_point(spec, tracks[key], events, la + dla, lo + dlo, tol, e0)
-            rows.append({"lat": la + dla, "lon": lo + dlo, "score": tot, **{f"s{i + 1}": per[i] for i in range(n)},
-                         "start": start, **{f"icao{i + 1}": key[i][0] for i in range(n)}})
+    with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(small, events, tol, df_for(df, hits, n), fine, elev)) as ex:
+        for part in ex.map(_score_job, jobs, chunksize=max(1, len(jobs) // (workers * 8))):
+            rows.extend(part)
     out = pd.DataFrame(rows).sort_values("score", ascending=False).reset_index(drop=True)
     log(f"scored {len(out):,} points at {fine:.0f} m")
     return out

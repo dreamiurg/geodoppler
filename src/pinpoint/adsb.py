@@ -9,6 +9,8 @@ vrate, details, source, alt_geom_ft, ...] relative to the file's `timestamp`.
 import gzip
 import json
 import subprocess
+import urllib.error
+import urllib.request
 from concurrent.futures import ProcessPoolExecutor
 from importlib import resources
 from pathlib import Path
@@ -35,19 +37,27 @@ def is_jet(type_code: str | None, types=None) -> bool:
 def download_day(day: str, data_dir: Path) -> Path:
     """Download + extract adsb.lol globe_history for YYYY-MM-DD into data_dir/adsb/<day>/traces."""
     out = data_dir / "adsb" / day
-    if (out / "traces").exists():
+    if (out / ".complete").exists():
         return out
     out.mkdir(parents=True, exist_ok=True)
     y, m, d = day.split("-")
     tag = f"v{y}.{m}.{d}-planes-readsb-prod-0"
-    assets = subprocess.run(
-        ["gh", "api", f"repos/adsblol/globe_history_{y}/releases/tags/{tag}", "-q", ".assets[].browser_download_url"],
-        check=True, capture_output=True, text=True).stdout.split()
+    api = f"https://api.github.com/repos/adsblol/globe_history_{y}/releases/tags/{tag}"
+    try:
+        with urllib.request.urlopen(api) as r:
+            assets = [a["browser_download_url"] for a in json.load(r)["assets"]]
+    except urllib.error.HTTPError as e:
+        raise SystemExit(f"no adsb.lol history for {day} ({e.code} from {api})")
     if not assets:
         raise SystemExit(f"no adsb.lol history for {day}")
-    # stream the split tar straight into tar -x; no 4 GB temp file
-    cmd = " ".join(f"curl -sfL '{u}'" for u in sorted(assets))
-    subprocess.run(f"( {cmd} ) | tar -x -C '{out}' ./traces", shell=True, check=True)
+    # stream the split tar parts, in order, straight into tar -x: no 4 GB temp file
+    tar = subprocess.Popen(["tar", "-x", "-C", str(out), "./traces"], stdin=subprocess.PIPE)
+    for u in sorted(assets):
+        subprocess.run(["curl", "-sfL", u], check=True, stdout=tar.stdin)
+    tar.stdin.close()
+    if tar.wait():
+        raise SystemExit(f"extracting {tag} failed")
+    (out / ".complete").touch()
     return out
 
 

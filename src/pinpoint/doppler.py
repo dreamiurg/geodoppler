@@ -63,3 +63,26 @@ def fit_event(spec: Spec, t0, t1, fmin, fmax, harmonics=(1,), seed=0) -> Event:
                                polish=True)
     f0, v, d, tc = r.x
     return Event(t0, t1, float(f0), float(v), float(d), float(tc), float(-r.fun), tuple(harmonics))
+
+
+def detect_events(spec: Spec, fmin=40.0, fmax=400.0, win=160.0, step=40.0, min_score=1.2,
+                  log=lambda m: None) -> list[Event]:
+    """Slide a window over the recording, fit a flyover in each, keep confident, distinct ones.
+    shortcut: scores only the fitted line (no harmonics); pass explicit boxes for weak events."""
+    found = []
+    t_end = spec.t[-1]
+    for t0 in np.arange(spec.t[0], max(spec.t[0] + 1, t_end - win + step), step):
+        t1 = min(t0 + win, t_end)
+        e = fit_event(spec, t0, t1, fmin, fmax)
+        # CPA must sit inside the window's middle so each flyover is judged with both flanks visible
+        inner = t0 + 0.25 * (t1 - t0) <= e.tc <= t1 - 0.25 * (t1 - t0)
+        ok = e.score >= min_score and e.v >= 25 and inner and e.d < 9000
+        log(f"window {t0:7.0f}-{t1:7.0f}s: tc={e.tc:7.1f} v={e.v:5.1f} d={e.d:6.0f} score={e.score:.2f}{' *' if ok else ''}")
+        if ok:
+            found.append(e)
+    found.sort(key=lambda e: -e.score)
+    keep: list[Event] = []
+    for e in found:
+        if all(abs(e.tc - k.tc) > 60 for k in keep):
+            keep.append(e)
+    return sorted(keep, key=lambda e: e.tc)

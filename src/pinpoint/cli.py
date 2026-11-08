@@ -1,0 +1,300 @@
+"""pinpoint: locate where a recording was made from aircraft Doppler sounds + ADS-B history.
+
+  pinpoint fetch URL                      download audio + metadata, render spectrogram overviews
+  pinpoint events RUN [--box ...]         fit Doppler events (auto-detect if no --box)
+  pinpoint locate RUN --date D --bbox B   search ADS-B tracks, write candidates + map.html
+  pinpoint run URL --date D --bbox B      all of the above
+  pinpoint frames RUN / pin RUN LAT LON   stills for visual clues; map a location judged from them
+"""
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import webbrowser
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+from . import adsb, audio, doppler, mapview, search
+
+DATA = Path(os.environ.get("PINPOINT_DATA", Path.home() / ".cache" / "pinpoint"))
+RUNS = Path(os.environ.get("PINPOINT_RUNS", "runs"))
+REGIONS = {"conus": adsb.CONUS}
+META_KEYS = ["id", "title", "uploader", "upload_date", "duration", "description", "location", "webpage_url", "tags"]
+
+
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", file=sys.stderr, flush=True)
+
+
+# ---------- fetch ----------
+
+def ytdlp(*args) -> str:
+    """The system yt-dlp: YouTube breaks old versions often, and a package manager keeps it current."""
+    exe = shutil.which("yt-dlp")
+    if not exe:
+        raise SystemExit("yt-dlp not found on PATH (brew install yt-dlp)")
+    return subprocess.run([exe, "--no-warnings", *args], check=True, capture_output=True, text=True).stdout
+
+
+def fetch(url: str) -> Path:
+    info = json.loads(ytdlp("--dump-single-json", "--skip-download", "--no-playlist", url))
+    run = RUNS / info["id"]
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "meta.json").write_text(json.dumps({k: info.get(k) for k in META_KEYS}, indent=2))
+    if not list(run.glob("audio.*")):
+        log(f"downloading audio for {info['id']}: {info.get('title')!r}")
+        ytdlp("-q", "--no-playlist", "-f", "bestaudio/best", "-o", str(run / "audio.%(ext)s"), info["webpage_url"])
+    spec = load_spec(run)
+    overview(spec, run)
+    log(f"run dir: {run}")
+    return run
+
+
+def load_spec(run: Path) -> audio.Spec:
+    cache = run / "spec.npz"
+    if cache.exists():
+        z = np.load(cache)
+        return audio.Spec(z["t"], z["f"], z["S"])
+    x = audio.load(str(next(run.glob("audio.*"))))
+    sp = audio.suppress_steady(audio.spectrogram(x))
+    np.savez_compressed(cache, t=sp.t, f=sp.f, S=sp.S)
+    return sp
+
+
+def _plot(ax, sp: audio.Spec):
+    ax.pcolormesh(sp.t, sp.f, sp.S, vmin=0, vmax=6, cmap="magma", shading="auto", rasterized=True)
+
+
+def overview(sp: audio.Spec, run: Path, chunk=600.0, fmax=500.0):
+    """One PNG per 10 minutes, 20-500 Hz: what a person (or Claude) scans for Doppler curves."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    out = run / "overview"
+    out.mkdir(exist_ok=True)
+    for i, t0 in enumerate(np.arange(0, sp.t[-1], chunk)):
+        fig, ax = plt.subplots(figsize=(20, 6))
+        _plot(ax, sp.crop(t0, t0 + chunk, 20, fmax))
+        ax.set_xlabel("seconds into recording")
+        ax.set_ylabel("Hz")
+        ax.set_xticks(np.arange(t0, t0 + chunk + 1, 30))
+        ax.grid(alpha=0.25)
+        fig.tight_layout()
+        fig.savefig(out / f"{i:02d}_{int(t0):05d}s.png", dpi=60)
+        plt.close(fig)
+
+
+def frames(run: Path, n=24) -> Path:
+    """Evenly spaced stills for visual clues (signs, terrain, vegetation, architecture)."""
+    meta = json.loads((run / "meta.json").read_text())
+    vid = next(run.glob("video.*"), None)
+    if vid is None:
+        ytdlp("-q", "--no-playlist", "-f", "bv*[height<=720]/b[height<=720]/bv*/b", "-o", str(run / "video.%(ext)s"),
+              meta["webpage_url"])
+        vid = next(run.glob("video.*"))
+    out = run / "frames"
+    out.mkdir(exist_ok=True)
+    dur = float(meta.get("duration") or 60)
+    for i, t in enumerate(np.linspace(dur * 0.02, dur * 0.98, n)):
+        subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-ss", f"{t:.1f}", "-i", str(vid), "-frames:v", "1",
+                        "-vf", "scale='min(1280,iw)':-2", str(out / f"{i:02d}_{int(t):05d}s.jpg")], check=True)
+    log(f"frames: {out}")
+    return out
+
+
+def pin(run: Path, lat: float, lon: float, note: str, radius_m: float, open_map=True):
+    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    path = mapview.render_pin(run / "map.html", meta.get("title") or run.name, lat, lon, note, radius_m)
+    (run / "result.json").write_text(json.dumps({"lat": lat, "lon": lon, "basis": note, "radius_m": radius_m,
+                                                 "google_maps": f"https://www.google.com/maps?q={lat:.5f},{lon:.5f}"}, indent=2))
+    log(f"map: {path.resolve()}")
+    if open_map:
+        webbrowser.open(path.resolve().as_uri())
+    return path
+
+
+# ---------- events ----------
+
+def parse_box(s: str):
+    """t0,t1,fmin,fmax[,h1+h2]  e.g. 2080,2240,80,190,1+2"""
+    p = s.split(",")
+    h = tuple(int(x) for x in p[4].split("+")) if len(p) > 4 else (1,)
+    return (*map(float, p[:4]), h)
+
+
+def events(run: Path, boxes=None, auto_top=2) -> list[doppler.Event]:
+    sp = load_spec(run)
+    if boxes:
+        evs = [doppler.fit_event(sp, t0, t1, f0, f1, h) for t0, t1, f0, f1, h in boxes]
+    else:
+        log("auto-detecting Doppler events (a few minutes per hour of audio)")
+        found = doppler.detect_events(sp, log=log)
+        evs = sorted(sorted(found, key=lambda e: -e.score)[:auto_top], key=lambda e: e.tc)
+        (run / "detected.json").write_text(json.dumps([e.to_dict() for e in found], indent=2))
+    evs.sort(key=lambda e: e.tc)
+    for e in evs:
+        log(f"event tc={e.tc:.1f}s v={e.v:.0f} m/s slant={e.d:.0f} m f0={e.f0:.1f} Hz score={e.score:.2f}")
+    (run / "events.json").write_text(json.dumps([e.to_dict() for e in evs], indent=2))
+    plot_events(sp, evs, run / "events.png")
+    return evs
+
+
+def plot_events(sp, evs, path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, axs = plt.subplots(1, len(evs), figsize=(9 * len(evs), 6), squeeze=False)
+    for ax, e in zip(axs[0], evs):
+        _plot(ax, sp.crop(e.t0 - 20, e.t1 + 20, e.f0 * 0.5, e.f0 * max(e.harmonics) * 1.7))
+        t = np.linspace(e.t0, e.t1, 400)
+        for h in e.harmonics:
+            ax.plot(t, h * doppler.ideal_curve(t, e.f0, e.v, e.d, e.tc), "c-", lw=0.8, alpha=0.6)
+        ax.set_title(f"tc={e.tc:.1f}s  v={e.v:.0f} m/s  slant={e.d:.0f} m  score={e.score:.2f}")
+    fig.tight_layout()
+    fig.savefig(path, dpi=60)
+    plt.close(fig)
+
+
+def load_events(run: Path):
+    return [doppler.Event(**{**d, "harmonics": tuple(d["harmonics"])}) for d in json.loads((run / "events.json").read_text())]
+
+
+# ---------- locate ----------
+
+def parse_bbox(s: str):
+    if s.lower() in REGIONS:
+        return REGIONS[s.lower()]
+    v = [float(x) for x in s.split(",")]
+    if len(v) == 3:  # lat,lon,radius_km
+        la, lo, r = v
+        dla, dlo = r / 111.0, r / (111.0 * np.cos(np.radians(la)))
+        return (la - dla, lo - dlo, la + dla, lo + dlo)
+    return tuple(v)
+
+
+def tiles(bbox, size=2.0):
+    lat0, lon0, lat1, lon1 = bbox
+    for a in np.arange(lat0, lat1, size):
+        for b in np.arange(lon0, lon1, size):
+            yield (a, b, min(a + size, lat1), min(b + size, lon1))
+
+
+def locate(run: Path, date: str, bbox, step=200.0, open_map=True) -> dict:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        raise SystemExit(f"--date must be YYYY-MM-DD, got {date!r}")
+    sp, evs = load_spec(run), load_events(run)
+    if not evs:
+        raise SystemExit("no events: run `pinpoint events` first")
+    log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
+    day = adsb.download_day(date, DATA)
+    df = pd.read_parquet(adsb.build_parquet(day))
+    # shortcut: one UTC day of tracks; a recording that straddles midnight needs the next day too
+    res = []
+    for tb in tiles(bbox):
+        pad = 0.15
+        sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
+        log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
+        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m))
+        if len(r):
+            res.append(r)
+    if not res:
+        raise SystemExit("no location matched all events; widen --bbox, check --date, or refit events")
+    cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)
+    cands.to_parquet(run / "candidates.parquet")
+    return report(run, cands, df, evs, date, open_map)
+
+
+def report(run, cands, df, evs, date, open_map=True) -> dict:
+    n = len(evs)
+    best = cands.iloc[0]
+    combo = [f"icao{i + 1}" for i in range(n)]
+    per_combo = cands.drop_duplicates(combo)
+    runner = per_combo.iloc[1] if len(per_combo) > 1 else None
+    start = pd.to_datetime(best.start, unit="s")
+    types = df.drop_duplicates("icao").set_index("icao")["type"].astype(str).to_dict()
+    tracks = []
+    for i in range(n):
+        icao = best[f"icao{i + 1}"]
+        t_cpa = best.start + evs[i].tc
+        g = df[(df.icao == icao) & ((df.t - t_cpa).abs() < 900)]
+        tracks.append({"path": g[["lat", "lon"]].round(5).values.tolist(),
+                       "label": f"event {i + 1}: {icao} {types.get(icao, '')}, CPA heard {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC"})
+    meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+    result = {
+        "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
+        "runner_up_score": None if runner is None else round(float(runner.score), 3),
+        "recording_start_utc": f"{start:%Y-%m-%d %H:%M:%S}",
+        "aircraft": [{"icao": best[c], "type": types.get(best[c], "")} for c in combo],
+        "date": date, "candidates": len(cands),
+        "google_maps": f"https://www.google.com/maps?q={best.lat:.5f},{best.lon:.5f}",
+    }
+    (run / "result.json").write_text(json.dumps(result, indent=2))
+    info = {
+        "Best estimate": f"<a href='{result['google_maps']}' target=_blank>{result['lat']}, {result['lon']}</a>",
+        "Score": f"{result['score']} (next aircraft combination: {result['runner_up_score']})",
+        "Recording started": result["recording_start_utc"] + " UTC",
+        "Aircraft heard": ", ".join(f"{a['icao']} {a['type']}" for a in result["aircraft"]),
+        "Candidates scored": f"{len(cands):,}",
+    }
+    title = meta.get("title") or run.name
+    path = mapview.render(cands, run / "map.html", title, info, tracks)
+    log(f"best: {result['lat']}, {result['lon']}  score {result['score']} (runner-up {result['runner_up_score']})")
+    log(f"map: {path.resolve()}")
+    if open_map:
+        webbrowser.open(path.resolve().as_uri())
+    print(json.dumps(result, indent=2))
+    return result
+
+
+# ---------- entry ----------
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="pinpoint", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    f = sub.add_parser("fetch"); f.add_argument("url")
+    fr = sub.add_parser("frames", help="extract stills for visual clues"); fr.add_argument("run", type=Path)
+    fr.add_argument("-n", type=int, default=24)
+    pn = sub.add_parser("pin", help="map a location judged from non-acoustic clues")
+    pn.add_argument("run", type=Path); pn.add_argument("lat", type=float); pn.add_argument("lon", type=float)
+    pn.add_argument("--note", default="judged from visual/metadata clues"); pn.add_argument("--radius", type=float, default=500)
+    pn.add_argument("--no-open", action="store_true")
+    e = sub.add_parser("events"); e.add_argument("run", type=Path)
+    for p in (e,):
+        p.add_argument("--box", action="append", type=parse_box, help="t0,t1,fmin,fmax[,1+2] seconds/Hz; repeat per event")
+    for p in (sub.add_parser("locate"), sub.add_parser("run")):
+        p.add_argument("target", help="run dir (locate) or URL (run)")
+        p.add_argument("--date", help="UTC day YYYY-MM-DD (default: upload date)")
+        p.add_argument("--bbox", type=parse_bbox, default="conus",
+                       help="lat0,lon0,lat1,lon1 | lat,lon,radius_km | conus")
+        p.add_argument("--step", type=float, default=200.0, help="coarse grid metres")
+        p.add_argument("--no-open", action="store_true")
+        if p.prog.endswith("run"):
+            p.add_argument("--box", action="append", type=parse_box)
+    a = ap.parse_args(argv)
+
+    if a.cmd == "fetch":
+        fetch(a.url)
+    elif a.cmd == "frames":
+        frames(a.run, a.n)
+    elif a.cmd == "pin":
+        pin(a.run, a.lat, a.lon, a.note, a.radius, not a.no_open)
+    elif a.cmd == "events":
+        events(a.run, a.box)
+    else:
+        run = fetch(a.target) if a.cmd == "run" else Path(a.target)
+        if a.cmd == "run":
+            events(run, a.box)
+        meta = json.loads((run / "meta.json").read_text()) if (run / "meta.json").exists() else {}
+        d = a.date or (meta.get("upload_date") and f"{meta['upload_date'][:4]}-{meta['upload_date'][4:6]}-{meta['upload_date'][6:]}")
+        if not d:
+            raise SystemExit("--date required")
+        locate(run, d, a.bbox, a.step, not a.no_open)

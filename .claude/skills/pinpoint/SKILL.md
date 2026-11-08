@@ -1,0 +1,79 @@
+---
+name: pinpoint
+description: Find where a YouTube video (or any recording) was filmed and show it on a map. Use when Dmytro gives a video URL and asks where it was taken, to geolocate a clip, or says "pinpoint". Primary method matches faint propeller-aircraft Doppler curves in the audio against public ADS-B flight history (works with zero visual clues); falls back to metadata and visual clues.
+---
+
+# pinpoint
+
+Repo: `~/src/dreamiurg/pinpoint` (run every command from there with `uv run pinpoint ...`).
+Work happens in `runs/<video_id>/`. ADS-B days cache in `~/.cache/pinpoint/adsb/<day>` (~4 GB download + 40 s build per new day).
+
+Do not ask Dmytro questions mid-run. Decide, state the assumption in the final report.
+
+## 1. Fetch and read the clues
+
+```bash
+uv run pinpoint fetch '<URL>'
+```
+
+Read `runs/<id>/meta.json`. Note, in this order of strength:
+- `location` (YouTube recording location) -> usually the answer already; still confirm.
+- Places, dates, times in title / description / tags. "Filmed September 8th" style hints set `--date`.
+- `upload_date` is the fallback date (recordings are often uploaded weeks later: prefer explicit hints).
+
+## 2. Acoustic path (the strong one)
+
+Look at every `runs/<id>/overview/*.png` (10 min each, 20-500 Hz). You are looking for **smooth falling
+S-shaped tones lasting 1-3 minutes**, often with a parallel line at 2x the frequency. That is a propeller
+aircraft flying past (Doppler). Steady horizontal lines are hum/engines idling: ignore them.
+
+```bash
+uv run pinpoint events runs/<id>                       # auto-detect, keeps the 2 strongest
+uv run pinpoint events runs/<id> --box 2080,2240,80,190,1+2 --box 2990,3140,95,185
+```
+
+`--box t0,t1,fmin,fmax[,1+2]`: seconds into the recording, Hz range of the line's sweep, and which
+harmonics are visible. Read `runs/<id>/events.png`: the cyan model must sit on the ridge. If it sits on a
+flat line or noise, tighten the box and refit. Two events are much stronger than one; three are fine.
+
+Then search. Region from the clues; tighter is faster and safer:
+
+```bash
+uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox 40.9,-73.5,120     # lat,lon,radius_km
+uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox 39.9,-74.5,41.9,-72.5
+uv run pinpoint locate runs/<id> --date 2026-09-08 --bbox conus               # hours; run in background
+```
+
+Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. Judge confidence from
+`score` vs `runner_up_score` (best of the *next aircraft combination*). A clear margin (>15%) with both
+event scores high means the match is real. A thin margin means: refit events, add a third event, or widen
+the date (try the previous year if the upload year has no match).
+
+## 3. Fallback: metadata and visual clues
+
+When there are no Doppler curves, no ADS-B match, or the recording is outside ADS-B coverage:
+
+```bash
+uv run pinpoint frames runs/<id>             # 24 stills into runs/<id>/frames/
+```
+
+Look at the frames like a geolocator: signs and text, language, road markings, plates, vegetation, terrain,
+architecture, sun position, landmarks. Combine with the metadata. Then:
+
+```bash
+uv run pinpoint pin runs/<id> 40.87 -73.52 --note "shoreline + water tower in frame 07" --radius 300
+```
+
+## 4. Show it
+
+Open `runs/<id>/map.html` (the commands do `open` unless `--no-open`), send it with SendUserFile, and
+report: coordinates + Google Maps link, method (acoustic / visual / metadata), confidence and margin,
+recording start time (acoustic path gives it to the second), aircraft heard, assumptions (date, region).
+
+## Limits
+
+- Needs the audio to carry aircraft sound: an unedited stretch (cuts break the time offsets) and a
+  non-jet flyover within ~8 km. Jets are filtered out (their tones do not show clean Doppler lines here).
+- ADS-B = adsb.lol community receivers: dense in the US/Europe, thin elsewhere; history from 2023 on.
+- Ground elevation is taken as 0 m (sea level). Slant distances are off by the site's elevation: widen
+  tolerances or expect a shifted fit in high terrain.
