@@ -40,6 +40,30 @@ def test_doppler_scale_recovers_radial_velocity_scale():
         assert abs(doppler_scale(Spec(st, sf, S), tr, e, lat0, lon0, 0.0) - k) <= 0.011
 
 
+def test_verify_credits_a_fast_sparsely_reported_pass():
+    """A 170 m/s aircraft reported every 20 s crosses the verify box in 7 rows; verification must still use its
+    whole track (it dropped every segment under 10 rows)."""
+    from pinpoint.audio import Spec
+    from pinpoint.doppler import C
+    from pinpoint.flyover import Track
+    from pinpoint.search import verify_extra
+    lat0, lon0 = 40.0, -100.0
+    t, lat, lon, alt = (a[::10] for a in synthetic_track(lat0, lon0, v=170.0, alt=1000.0, offset=7500.0, dur=800))
+    t = t + 1000
+    t_rec, ratio, _, tcpa, _ = Track(t, lat, lon, alt).curve(lat0, lon0)
+    st, sf = np.arange(0, 2000, 0.5), np.arange(20, 300, 0.5)
+    S = np.zeros((len(sf), len(st)), np.float32)
+    sel = np.abs(st - tcpa) < 90
+    S[np.rint((100 * np.interp(st[sel], t_rec, ratio) - sf[0]) / 0.5).astype(int), np.flatnonzero(sel)] = 5.0
+    df = pd.DataFrame({"icao": "x", "t": t, "lat": lat, "lon": lon, "alt_m": alt, "gs": 170.0})
+    assert ((np.abs(df.lat - lat0) < 0.11) & (np.abs(df.lon - lon0) < 0.14)).sum() < 10
+    cands = pd.DataFrame({"lat": [lat0], "lon": [lon0], "score": [1.0], "start": [0.0], "icao1": ["p"], "icao2": ["q"]})
+    primary = [Event(0, 0, 100, 60, 1000, 0, 1), Event(0, 0, 100, 60, 1000, 100, 1)]
+    e = Event(tcpa - 90, tcpa + 90, 100.0, 170.0, 7600.0, tcpa, 1.0)
+    v = verify_extra(Spec(st, sf, S), cands, [e], primary, df, Tolerances(), log=lambda m: None)
+    assert v.xicao1[0] == "x" and v.x1[0] > 2
+
+
 def test_offset_filter_in_blocks_equals_one_join():
     """Blocking the grid-point join (memory) must not change the hits or their order."""
     from pinpoint.search import offset_filter

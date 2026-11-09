@@ -300,14 +300,15 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
     combo = [f"icao{i + 1}" for i in range(n)]
     best = cands.drop_duplicates(combo).head(top).copy()
     log(f"verifying {len(best)} best combinations against {len(extra)} extra event(s)")
-    if len(best) and len(extra):  # cut the day once to a superset of every per-row `near` window below
+    if len(best) and len(extra):  # cut the day once to the aircraft that enter any per-row box below (whole tracks)
         whens = np.concatenate([best.start.to_numpy() + e.tc for e in extra])
         pad = max(e.d for e in extra) * (1 + tol.slant_rel)
         dlat = pad / DEG + 0.01 + 1e-6  # 1e-6: the per-row test below rounds differently at the edge
         dlon = pad / (DEG * np.cos(np.radians(np.abs(best.lat.to_numpy()).max()))) + 0.01 + 1e-6
-        df = df[(df.t > whens.min() - 400) & (df.t < whens.max() + 400)
-                & (df.lat > best.lat.min() - dlat) & (df.lat < best.lat.max() + dlat)
-                & (df.lon > best.lon.min() - dlon) & (df.lon < best.lon.max() + dlon)]
+        df = df[(df.t > whens.min() - 400) & (df.t < whens.max() + 400)]
+        inbox = df[(df.lat > best.lat.min() - dlat) & (df.lat < best.lat.max() + dlat)
+                   & (df.lon > best.lon.min() - dlon) & (df.lon < best.lon.max() + dlon)]
+        df = df[df.icao.isin(inbox.icao.unique())]
     rel = np.arange(-70.0, 71.0, spec.t[1] - spec.t[0])
     ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
     extra_scores = np.zeros((len(best), len(extra)))
@@ -318,10 +319,12 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
         for i, r in enumerate(best.itertuples()):
             when = r.start + e.tc
             e0 = 0.0 if elev is None else float(elev([r.lat], [r.lon])[0])
-            near = df[(df.t > when - 400) & (df.t < when + 400)
-                      & (np.abs(df.lat - r.lat) < dmax / DEG + 0.01)
-                      & (np.abs(df.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
-            for icao, seg in segments(near, min_len=10):
+            near = df[(df.t > when - 400) & (df.t < when + 400)]
+            box = near[(np.abs(near.lat - r.lat) < dmax / DEG + 0.01)
+                       & (np.abs(near.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
+            # whole tracks of the aircraft that enter the box: clipped to the box, a fast or sparsely reported pass
+            # kept < 10 rows and was dropped (Kz69coKyH9Q: a PC12 7.6 km away, 7 rows in the box, 40 in +-400 s)
+            for icao, seg in segments(near[near.icao.isin(box.icao.unique())], min_len=10):
                 if icao in {getattr(r, c) for c in combo}:
                     continue
                 tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
