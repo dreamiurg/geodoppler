@@ -1,0 +1,41 @@
+run          day         ev verdict    err_s conf margin k            score  ratio  decoys(max)        conf_d
+wTRF12TtDsQ  2026-11-07   6 CORRECT       29 high  1.045 1.01/1.01    3.346   1.28   2.618 (5)        high
+3xPxFS5evIM  2026-11-07   3 WRONG      16895 low   0.031 1.00/1.00    2.039   0.97   2.106 (5)        low
+Xl3klV87YNs  2026-11-07   6 WRONG       8065 low   0.043 1.05/1.21    1.628   0.94   1.733 (5)        low
+9O6hpXOevBM  2026-11-07   8 WRONG       7295 low   0.068 0.92/1.21    2.349   0.98   2.403 (5)        low
+qoUTMghkS1k  2026-11-07   3 WRONG     -59916 low   0.004 1.05/1.06    4.134   0.90   4.602 (5)        low
+vbPMpKPCs7M  2026-11-07   4 WRONG     -52375 low   0.011 1.05/1.06    4.101   0.80   5.128 (5)        low
+Bf2uUbj8qvE  2026-11-07  35 none
+HuYzXxa5gNE  2026-11-07   4 WRONG     -40576 low     nan 1.23/1.11    1.158   0.81   1.429 (5)        low
+b4xV0V7oHe0  2026-11-04   8 WRONG      -4447 low   0.082 1.00/1.15    4.624   0.90   5.136 (5)        low
+aJcOrb0Sq-A  2026-11-07   3 WRONG      23697 low   0.067 1.05/1.10    1.689   1.00   1.690 (5)        low
+Cs4nYfpcC0E  2026-11-07   9 CORRECT      -16 low   0.007 1.00/1.00    4.339   0.93   4.677 (5)        low
+LajMZuJBPLA  2026-11-07   3 WRONG      15288 low   0.102 0.82/1.00    1.121   0.82   1.369 (5)        low
+Ane3idAqQac  2026-10-27   9 WRONG      -3117 low   0.124 1.20/0.94    2.360   1.01   2.332 (5)        low
+DhAIJYgqmMc  2026-10-27   4 WRONG       9675 low   0.001 0.85/1.12    2.068   0.88   2.352 (5)        low
+e3hz7EunI18  2026-10-27   6 WRONG      -6141 low   0.049 1.01/1.01    2.069   0.81   2.553 (5)        low
+d2EqZDmIw_k  2026-10-27  12 WRONG       3260 low   0.141 1.24/1.05    3.866
+YOTJzpyb6cc  2026-10-28   3 WRONG      22066 low   0.025 1.00/1.05    2.649   1.03   2.583 (5)        low
+DbcjVt0lm2E  2026-10-28   6 WRONG      -5361 low   0.022 0.93/0.90    2.419   0.97   2.489 (5)        low
+7NzTIUwkPE8  2026-11-08  11 WRONG      10287 high  0.428 0.94/1.03    4.111   1.13   3.651 (5)        low
+3AELK17k8lg  2026-11-08   5 WRONG        968 low   0.047 0.83/1.20    1.868   0.91   2.058 (5)        low
+AxxRAFZS_5Y  2026-11-08   4 WRONG       8810 low   0.039 0.95/1.01    2.716   0.98   2.784 (5)        low
+iSYDIGV3Ppg  2026-11-08   4 WRONG       4681 low   0.025 0.99/1.05    2.369   0.91   2.590 (5)        low
+yAsLE5tgxZE  2026-11-08   6 WRONG       8808 low   0.026 0.95/1.00    2.589   0.93   2.798 (5)        low
+Kz69coKyH9Q  2026-11-08   6 WRONG       -243 low   0.292 1.13/1.25    2.363   1.22   1.935 (5)        low
+-CKmIa-V-Iw  2026-11-08   4 WRONG      10741 low   0.011 1.00/0.98    3.591   0.99   3.627 (5)        low
+UMf6oAlorlk  2026-11-08  12 CORRECT       11 high  0.266 1.02/1.04    3.798   1.21   3.142 (5)        high
+xUJgTNRHPMU  2026-11-08  11 CORRECT      -12 high  1.608 1.00/1.00   12.885   2.23   5.784 (5)        high
+LYoUoV2jRL8  2026-11-07   5 none
+TbVt7uWmnlQ  2026-11-07   5 WRONG      23303 low   0.022 0.90/1.03    1.912   1.00   1.921 (5)        low
+vDHQcL2Hvo0  2026-11-08  13 WRONG      -7952 low   0.017 1.15/0.89    1.715   1.00   1.714 (5)        low
+dNs5EMP91vc  2026-11-08  12 WRONG       7330 low   0.058 1.00/1.00    5.495   0.96   5.735 (5)        low
+JWKdGun5GRo  2026-11-08   5 WRONG       9906 low   0.030 0.89/1.05    3.886   0.92   4.202 (5)        low
+V5AuHCx1qCw  2026-11-08   9 WRONG       1819 low   0.086 1.07/0.88    4.186   1.00   4.194 (5)        low
+D5KjAKFEx-Q  2026-11-08  12 WRONG      10961 low   0.025 1.05/0.97    4.196   1.03   4.073 (5)        low
+cv3itW_Q6H4  2026-11-08   3 WRONG      19238 low   0.023 1.00/0.99    3.200   1.01   3.168 (5)        low
+WBZAVCwDe3o  2026-11-07   3 WRONG      10940 low   0.005 0.96/0.98    2.488   0.82   3.019 (5)        low
+
+36 cases: correct 4, wrong 30, none 2
+  CORRECT: high 3, low 1 | decoy rule: high 3, low 1
+  WRONG: high 1, low 29 | decoy rule: high 0, low 29

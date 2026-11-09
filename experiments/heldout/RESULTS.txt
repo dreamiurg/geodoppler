@@ -1,0 +1,41 @@
+heldout: current main and the --decoys rule on 36 labeled livestreams (experiments/dataset/labeled.json)
+
+Truth = YouTube release_timestamp_utc; CORRECT = found recording start within 60 s of it (no spots known).
+Step 1 = main at 867719b, unchanged (snapshot EXP/main/src). Step 3 = 333deaf decoy searches only
+(heldout.py decoys), true-day scores reused from step 1. Refactor checked bit-exact against main on 3 cases
+(candidates/verified parquet identical, result.json identical apart from the two new keys), and one full
+`locate --decoys 5` (wTRF12TtDsQ) reproduced the driver's decoy scores exactly. Data: /Volumes/DevScratch/pinpoint/exp/heldout.
+
+STEP 1 (step1_table.txt): 36 cases: 4 correct, 30 wrong, 2 none.
+  correct: 3 high, 1 low.  wrong: 1 high, 29 low.  "high" was right 3 of 4 times.
+  Wrong-high: 7NzTIUwkPE8 (margin 43 %, start 2.9 h off, k 0.94/1.03).
+  None: Bf2uUbj8qvE (no match), LYoUoV2jRL8 (exit 70 after 24.7M candidates, Orlando tile; cause not checked).
+  Correct start errors: +29, -16, +11, -12 s (two are BEFORE go-live, not "2-33 s after").
+  Total locate time 1967 s.
+
+STEP 3 (step3_table.txt): all 34 answered cases have >= 3 events; 33 got 5 decoys, d2EqZDmIw_k crashed (exit 70)
+on decoy 5, ratio 1.10 over the 4 it finished (wrong, k-flagged).
+  correct ratios: 0.93, 1.21, 1.28, 2.23
+  wrong ratios:   0.80 ... 0.99 (21 cases), 1.00, 1.01, 1.01, 1.03, 1.03, 1.10, 1.13, 1.22
+  decoy rule (1.2, >= 3 events, k flag): correct 3 high / 1 low; wrong 0 high / 30 low.
+  Kz69coKyH9Q is wrong at ratio 1.221 (start 243 s off), above the correct UMf6oAlorlk at 1.209; only the
+  k flag (1.13/1.25) keeps it low. The ratio by itself does NOT separate right from wrong on this set.
+  7NzTIUwkPE8 (wrong-high in step 1) drops to low at 1.13.
+  Cs4nYfpcC0E is correct at 0.93 (9 events, margin 0.7 %): low under both rules.
+
+Threshold sweep (not applied; code keeps 1.2). correct-high of 4 / wrong-high of 30:
+  th    ratio only   ratio + k flag
+  1.00  3 / 8        3 / 4
+  1.10  3 / 3        3 / 1  (7NzTIUwkPE8)
+  1.15  3 / 1        3 / 0
+  1.20  3 / 1        3 / 0
+  1.25  2 / 0        2 / 0  (loses UMf6oAlorlk at 1.209)
+  1.30  1 / 0        1 / 0
+Leave-one-out decoy null (each decoy vs max of the other 4, 33 cases): >= 1.0 33/165, >= 1.1 5/165,
+>= 1.2 2/165, >= 1.3 1/165, max 1.30. That matches calibration's 1/65 at 1.2, but the null tail reaches 1.30.
+
+Schedule-leak check: for the 4 correct cases no decoy's best spot was within 16 km of the answer
+(nearest 16.7 km, wTRF12TtDsQ on 11-08). Not checked against wrong cases' (unknown) true spots.
+
+Caveats: 4 positives only. Decoy days are the nearest cached days, so most cases share 11-04..11-08 and
+10-27/10-28; decoys are not independent across cases. Weekday mix was not controlled.
