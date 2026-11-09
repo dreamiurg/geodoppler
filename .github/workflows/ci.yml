@@ -39,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: astral-sh/setup-uv@v10.3.3
-      - run: uv sync --locked
+      # --frozen, not --locked: the lockfile records a local exclude-newer setting that CI does not have.
+      - run: uv sync --frozen
       - run: uv run pytest -q
 
   # The only check to require if branch protection is added later.
