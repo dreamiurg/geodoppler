@@ -1,0 +1,147 @@
+recall: why 30 of 34 answered held-out livestreams are wrong, and what recovers them
+
+VERDICT
+Mostly the method, not a bug. Of the 30 wrong answers plus the 2 non-answers:
+  A  3 looped audio (the stream replays one ~41-47 min recording; the go-live label cannot be right)
+  B  5 a search event's fitted speed (124-172 m/s) has no non-jet ADS-B track at the truth time
+  C  2 non-jet tracks exist for both search events, but no pair is time-locked
+  D  9 a truth-time pair with signal (null P <= 0.07) or a better-verifying point exists but is outranked
+  E 12 a truth-time pair exists, but its rank is no better than chance (one exists for most fake times)
+  F  1 crash (exit 70, out of memory), fixed
+Two bugs were found and fixed: verification clipped tracks to a box and dropped fast or sparse passes (D:
+Kz69coKyH9Q, TbVt7uWmnlQ), and offset_filter's join ran out of memory (F: LYoUoV2jRL8, d2EqZDmIw_k decoy 5).
+With both fixes, held-out (heldout.py run + decoys, variant `whole`, same 36 cases, decoy rule unchanged):
+  correct 4 -> 6, wrong 30 -> 29, none 2 -> 1; wrong-high 0 -> 0 (decoy rule), 1 -> 1 (margin rule, 7NzTIUwkPE8).
+  Cost: Cs4nYfpcC0E (correct, low, 0.7 % margin) turns wrong, and UMf6oAlorlk's decoy ratio drops 1.21 -> 1.19,
+  so decoy-rule correct-high goes 3 -> 2. The 3 cases gained are all low. Recall is still 6 of 36: 19 of the 30
+  failures (A, B, C, E) have no evidence the right aircraft is findable at all.
+
+GROUND TRUTH AND RULES
+Sound only. CORRECT = found start within 60 s of the YouTube go-live (release_timestamp), as heldout.py.
+The search bbox is labeled.json's search_bbox, set from the channel's stated region (experiments/dataset);
+I did not use it to judge spots and did not check whether it contains the true spot (unknown for 32 cases).
+The time-given runs use the same bbox.
+
+METHOD (all scripts in experiments/recall; data in /Volumes/DevScratch/pinpoint/exp/recall)
+1. rank.py / null_rank.py: in main's candidates/verified.parquet, the best combination whose start is within
+   60 s of go-live, and its rank. Null: the same lookup at 40 fake truths (go-live +-10..200 min). Most cases
+   have a "truth-time" candidate by chance (18-29 of 40 fake truths hit), so rank alone proves nothing;
+   nullP = share of fake truths that rank at least as well.
+2. given.py: `locate --start <go-live> --start-window 60 --decoys 5` on all 36 (decoys at the same time of
+   day). given_table.py, given_vs_main.py compare it with main.
+3. loopscan.py / loop.py: spectrogram autocorrelation over lags 60 s-1 h.
+4. gates.py: for the no-match cases, the search front half at the truth time with gates relaxed one by one
+   (rotorcraft, speed, slant, offset, same aircraft for both events). Jets cannot be tested: props.parquet
+   never held them.
+5. extras.py: at the time-given answer, every aircraft near each unexplained extra event, vs the verify gates.
+6. reverify.py: verification only, re-run on main's candidates (search unchanged): points per combination
+   1 vs 8, box-clipped vs whole tracks. points=1 reproduces main's verified scores exactly.
+7. joinsize.py: rows of the unblocked offset join on LYoUoV2jRL8's crashing tile.
+
+TIME-GIVEN RESULT (--start go-live --start-window 60), per wrong/none case (details in cases.txt)
+  no match (8): 3xPxFS5evIM Xl3klV87YNs HuYzXxa5gNE vDHQcL2Hvo0 Bf2uUbj8qvE dNs5EMP91vc cv3itW_Q6H4 LajMZuJBPLA
+  match (24), score / start err / decoy ratio (same time of day) / k:
+    qoUTMghkS1k 4.12 -51 1.00 1.05/0.99   vbPMpKPCs7M 3.85 +35 1.22 1.00/1.01 (high, looped audio)
+    9O6hpXOevBM 0.84 +46 0.91 0.84/1.22   b4xV0V7oHe0 3.82 -41 no decoy match 1.15/1.00
+    aJcOrb0Sq-A 1.45  -9 1.00 1.08/0.97   Ane3idAqQac 1.30 -40 0.85 1.04/1.14
+    DhAIJYgqmMc 0.61 -16 0.33 0.80/0.90   e3hz7EunI18 1.46 -32 0.81 1.21/0.93
+    d2EqZDmIw_k 2.35 -50 0.88 1.00/0.89   YOTJzpyb6cc 1.11  +9 0.53 1.25/1.09
+    DbcjVt0lm2E 1.38 -11 0.74 0.84/0.82   7NzTIUwkPE8 1.73 -21 1.00 0.88/0.80
+    3AELK17k8lg 1.19 +36 1.10 0.91/1.15   AxxRAFZS_5Y 2.50  +0 0.98 1.06/1.00
+    iSYDIGV3Ppg 2.12 -52 1.33 0.99/1.05 (high)  yAsLE5tgxZE 2.38 -4 1.11 1.06/1.00
+    Kz69coKyH9Q 1.63  -2 1.09 0.92/0.99   -CKmIa-V-Iw 3.02 -22 1.52 1.03/0.86
+    TbVt7uWmnlQ 1.77 -15 1.00 1.01/1.06   JWKdGun5GRo 3.35 +11 0.89 0.82/1.17
+    V5AuHCx1qCw 2.71 +36 1.13 0.98/1.25   D5KjAKFEx-Q 1.89 +27 0.81 0.96/0.90
+    WBZAVCwDe3o 2.62 -55 1.39 1.14/0.80   LYoUoV2jRL8 2.18  -4 1.17 1.00/1.15
+  Only WBZAVCwDe3o's time-given score beats main's unconstrained winner (2.62 > 2.49). Everywhere else the
+  wrong winner scores higher. Against the same time of day on 5 other days, 18 of 24 time-given matches
+  reach a ratio <= 1.13: at a known time the search finds a pair about as good on any day. A time-given
+  match is evidence, not proof; it was proof of nothing for the looped vbPMpKPCs7M, which reads "high".
+
+CAUSES (case ids; evidence per case in cases.txt)
+A looped audio, 3: qoUTMghkS1k, vbPMpKPCs7M (one channel, period 2481.5 s, peak autocorrelation 0.68/0.48,
+  every other case <= 0.03), LajMZuJBPLA (2836 s, 0.75). The "flyovers" are one recording replayed; the
+  stream's go-live is not when it was recorded. Unrecoverable; a loop check before locate would refuse them.
+B no non-jet track at the fitted speed, 5: 3xPxFS5evIM (v 172), Xl3klV87YNs (124), HuYzXxa5gNE (139),
+  vDHQcL2Hvo0 (168), Bf2uUbj8qvE (124/135, no answer). gates.py: 0-3 tracks within +-30 m/s at the truth
+  time, 45-119 with the speed gate open (that many pairs appear at any time, so opening it proves nothing).
+  These are jets (never in props.parquet), or misfits: events.png shows HuYz ev1 as a close harmonic comb the
+  fit misses, vDHQ's events as broadband clicks. Cause (a)/(c-jet). Not fixable without jet tracks.
+C tracks exist, no time-locked pair, 2: dNs5EMP91vc, cv3itW_Q6H4. Either the aircraft has no ADS-B (b) or
+  the fits are off (a); I cannot tell which.
+D outranked with signal, 9: Kz69coKyH9Q, TbVt7uWmnlQ, AxxRAFZS_5Y, yAsLE5tgxZE, iSYDIGV3Ppg, 3AELK17k8lg,
+  aJcOrb0Sq-A, b4xV0V7oHe0, WBZAVCwDe3o. Truth pair at combination rank 7-32, nullP 0.03-0.07.
+  - Corroboration: Kz69's time-given spot is 1.5 km from wTRF12TtDsQ's correct answer (33.90,-84.55) and
+    shares aircraft a883cc; two independent recordings agree.
+  - The four streams 3AELK/AxxRAF/iSYD/yAsL hear the same events at the same wall-clock second (17:07,
+    17:11, 17:12:50, 17:17 UTC on 11-08), so one place. Time-given puts Axx and yAs at the same spot
+    (44.83,-88.36, pair a20189+ab4ecb) but iSYD and 3AELK ~360 km west. At most one camp is right, so the
+    time-given "high" for iSYD (ratio 1.33) is suspect. Axx and yAs share audio, so their agreement is not
+    independent.
+  - Why they lose: the truth pair's extra events go unexplained (verified score = base) while the winner
+    picks up verification credit. extras.py at the truth spot: Kz69's 1256 s event has a PC12 7.6 km away,
+    CPA 1 s off, score 0.75, but verify dropped it: the track clipped to the verify box kept 7 rows (< 10).
+    TbVt's 3106 s event, a C208, likewise. b4xV's 4567 s event has a P180 at 13.8 km scoring 1.50, outside
+    the 11.5 km slant gate (its fit sits at the d = 8 km fit bound). Axx/aJcO extras: no aircraft at all.
+  - WBZ: main has the same pair as its #2 combination, but verified only that combination's best point
+    (start err -117 s). Another point of the pair (err -55 s) verifies to 2.62 > winner 2.49. Verifying the
+    8 best points per combination did not fix it (another wrong pair rose to 2.58) and lost nothing else,
+    gained nothing: 4 correct (reverify_8.json). Dropped.
+E truth-time pair no better than chance, 12: 7NzTIUwkPE8, 9O6hpXOevBM, DhAIJYgqmMc, e3hz7EunI18,
+  d2EqZDmIw_k, DbcjVt0lm2E, YOTJzpyb6cc, -CKmIa-V-Iw, JWKdGun5GRo, V5AuHCx1qCw, D5KjAKFEx-Q, Ane3idAqQac.
+  nullP 0.12-0.62, time-given k outside 1 +- 0.08 in all 12, ratio <= 1.13 in 11 of 12. Most likely the true
+  aircraft are not among the tracks (no ADS-B, or a misfit event in the search pair), i.e. (a)/(b); not
+  separable here. Ane3: the time-given pair is absent from main because passes() keeps one CPA per point per
+  continuous pass (a6f737's day-long segment keeps a CPA 1459 s earlier); it scores 1.30 < 2.36, so it would
+  not have won. e3hz: four near-identical events 244 s apart look like one aircraft flying circuits, which the
+  search cannot match (offset_filter requires two different aircraft); no circuit-flying track near 75 m/s
+  was found in the bbox, so this is a guess.
+F crash, 1: LYoUoV2jRL8. Time-given: 2.18, err -4 s, ratio 1.17.
+Bbox (e): not checked, true spots unknown. The only spatial evidence is D's: Kz69 lands inside its bbox.
+
+EXIT 70
+lockf exits 70 (EX_SOFTWARE) when its command is killed by a signal. LYoUoV2jRL8, Orlando tile: 24.7M x
+19.6M (point, pass) candidates; the unblocked offset_filter merge would build 949,401,850 rows (~84 GB of
+numbers) on a 36 GB machine; killed right after "event 2" is logged. d2EqZDmIw_k decoy 5 died at the same
+step (21.0M x 33.1M). Fix (commit 0e31d13): join in blocks of 50k grid points, filter each block, restore the
+original row order; bit-identical output (test + a randomized comparison with the old function). The blocked
+join gives 407,258 hits on that tile.
+
+FIX KEPT
+1. offset_filter in blocks (0e31d13): no behavior change, removes the OOM. LYoUoV2jRL8 now answers, correct
+   (err -4 s, 2.707, margin 13 %, k 1.00/1.15 -> low; decoy ratio 1.18). d2EqZDmIw_k's decoy 5 now completes.
+   LYoU's 853 s is the slowest locate (one tile: 347k hits, 10.8k combinations).
+2. verify_extra on whole tracks (d673cdd): the aircraft that enter an extra event's box are verified on their
+   full +-400 s track instead of the box-clipped part (gates unchanged). Re-verifying main's candidates alone
+   (reverify_1w.json): Kz69coKyH9Q and TbVt7uWmnlQ become correct, Cs4nYfpcC0E wrong.
+
+Before/after on all 36 (heldout.py score main / score new main  vs  score whole whole):
+                        main (step1 + step3)        whole (both fixes)
+  correct / wrong / none   4 / 30 / 2                  6 / 29 / 1
+  margin rule  correct     3 high, 1 low               3 high, 3 low
+               wrong       1 high, 29 low              1 high, 28 low   (7NzTIUwkPE8 both times)
+  decoy rule   correct     3 high, 1 low               2 high, 4 low    (UMf6oAlorlk 1.209 -> 1.19)
+               wrong       0 high, 29 low (+1 crash)   0 high, 29 low
+  correct ratios           0.93 1.21 1.28 2.23         0.87 1.01 1.18 1.19 1.29 2.25
+  wrong ratios, max        1.22                        1.12 (7NzTIUwkPE8)
+  Gained: Kz69coKyH9Q (-2 s), TbVt7uWmnlQ (-15 s), LYoUoV2jRL8 (-4 s). Lost: Cs4nYfpcC0E (now -7329 s).
+Whole-track verification raises decoy-day scores too (wTRF12TtDsQ's best decoy 1.50 -> 2.66), so every
+ratio moves; the wrong maximum fell from 1.22 to 1.12 and the correct ones spread from 0.87 to 2.25. The
+1.2 threshold was not retuned. Kz69 is still flagged low (k 0.92), LYoU too (k 1.15).
+Rejected: verifying the 8 best points of each combination (reverify_8.json: 4 correct, no gain, WBZ still
+wrong because another wrong pair rose with it).
+Held-out outputs: /Volumes/DevScratch/pinpoint/exp/heldout/whole (heldout.py writes there; runs/ untouched).
+
+NOT CHECKED / OPEN
+- Whether the YouTube archives start at go-live (12 h archives are flagged in labeled.json); A's loops show
+  some streams are not live audio at all. A loop check (loopscan.py) is cheap and could refuse such cases.
+- Jets: B cases may be jets; there is no jet data to test.
+- passes() one-CPA-per-pass shortcut (Ane3, and the time-given pairs at other points: V5Au, D5Kj, 9O6h):
+  local minima would add candidates; not prototyped, its cost and false-match risk are unknown.
+- Fit bounds: d is capped at 8 km and v at 180 m/s in doppler.fit_event; capped fits feed wrong gates.
+- Visual inspection of events.png was done for 9 cases only (e3hz, 3xPx, Xl3k, vDHQ, HuYz, dNs5, Kz69,
+  b4xV, TbVt).
+- The 4 Wisconsin streams: which camp is right.
+- LYoUoV2jRL8's gain was measured with both fixes; not run with fix 1 alone (its time-given run, old verify,
+  found the same spot at ratio 1.17, so fix 1 alone likely suffices).
+- Kz69/TbVt wins are thin (margins 0.5 % and 1.7 %); any scoring change can flip them back.
