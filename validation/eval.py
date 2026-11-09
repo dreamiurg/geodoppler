@@ -100,6 +100,13 @@ def locate_seconds(log):
     return None if s is None else s % 86400
 
 
+def raw_margin(d):
+    """Margin as cli.report computes it, unrounded (result.json rounds 0.1497 to 0.15)."""
+    c = pd.read_parquet(d / "verified.parquet" if (d / "verified.parquet").exists() else d / "candidates.parquet")
+    per = c.drop_duplicates([k for k in c.columns if k.startswith("icao")])
+    return 0.0 if len(per) < 2 else (per.score.iloc[0] - per.score.iloc[1]) / per.score.iloc[1]
+
+
 def score_case(vdir, case, true_start, spot, margin_only=False):
     d = vdir / case
     row = {"case": case}
@@ -110,7 +117,7 @@ def score_case(vdir, case, true_start, spot, margin_only=False):
     err_km = None if spot is None else km((r["lat"], r["lon"]), spot)
     ok = (err_s is None or err_s <= 60) and (err_km is None or err_km <= 3)
     # margin_only: confidence as before the Doppler-scale flag (same search, so same margins)
-    high = (r["margin"] or 0) >= 0.15 if margin_only else r["confidence"] == "high"
+    high = raw_margin(d) >= 0.15 if margin_only else r["confidence"] == "high"
     return {**row, "err_s": err_s, "err_km": err_km, "margin": r["margin"], "conf": r["confidence"],
             "k": r.get("doppler_scale"), "types": "+".join(a["type"] or "?" for a in r["aircraft"]),
             "verdict": "CORRECT" if ok else "WRONG",
