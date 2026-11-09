@@ -1,0 +1,44 @@
+Per-case evidence for experiments/recall/REPORT.txt. v1/v2 = fitted speeds (m/s) of the two search events.
+#tr = truth pair's combination rank in main verified.parquet (candidates if not verified); nullP = share of 40 fake
+truths (go-live +-10..200 min) that get a candidate at that rank or better. Classes: A loop = looped audio;
+B speed = no non-jet track at a search event's fitted speed at the truth time; C no pair = tracks exist, none
+time-locked; D outranked = a truth-time pair with signal (nullP <= 0.07) loses; E chance = truth-time pair no
+better than chance; F crash. fixed = verdict with both fixes (heldout variant whole).
+
+run           ev v1/v2   main      err_s conf | time-given (--start go-live --start-window 60 --decoys 5) |  #tr nullP | fixed   | class       | evidence
+wTRF12TtDsQ    6 122/84  CORRECT     +29 high | 3.35 err  +29 ratio 2.11 k 1.01/1.01 high    |    1  0.0 | CORRECT | ok          | correct in main
+3xPxFS5evIM    3 172/71  wrong    +16895 low  | no match                                     |    -    - | wrong   | B speed     | ev2 fit v=172: no non-jet track within +-30 m/s at the truth time (52 with speed open)
+Xl3klV87YNs    6 58/124  wrong     +8065 low  | no match                                     |    -    - | wrong   | B speed     | ev2 fit v=124: 3 non-jet tracks in range, no pair; 53 with speed open; level -74 dBFS
+9O6hpXOevBM    8 88/35   wrong     +7295 low  | 0.84 err  +46 ratio 0.91 k 0.84/1.22 low     |  106 0.33 | wrong   | E chance    | truth pair combo#106 (P 0.33); time-given k 0.84/1.22
+qoUTMghkS1k    3 114/114 wrong    -59916 low  | 4.12 err  -51 ratio 1.00 k 1.05/0.99 low     |    2  0.0 | wrong   | A loop      | audio repeats every 2481.5 s (corr 0.68-0.79); the 3 'flyovers' are one sound replayed
+vbPMpKPCs7M    4 114/114 wrong    -52375 low  | 3.85 err  +35 ratio 1.22 k 1.00/1.01 high    |    5  0.0 | wrong   | A loop      | same 2481.5 s loop as qoUT; time-given answer even reads high (ratio 1.22)
+Bf2uUbj8qvE   35 124/135 none                 | no match                                     |    -    - | none    | B speed     | (no answer in main) 35 events, search pair v=135/124: 0 tracks in range for both
+HuYzXxa5gNE    4 97/139  wrong    -40576 low  | no match                                     |    -    - | wrong   | B speed     | ev1 fit v=139 (close harmonic comb, fit off): 0 tracks in range, 104 with speed open
+b4xV0V7oHe0    8 148/139 wrong     -4447 low  | 3.82 err  -41 ratio nan k 1.15/1.00 low      |    8 0.03 | wrong   | D outranked | truth pair combo#8 (P 0.03); k 1.15; several fits hit the d=8 km bound; P180 extra at 13.8 km fails the 11.5 km slant gate
+aJcOrb0Sq-A    3 106/52  wrong    +23697 low  | 1.45 err   -9 ratio 1.00 k 1.08/0.97 low     |   10 0.03 | wrong   | D outranked | truth pair combo#10 (P 0.03); 1 extra, no aircraft near it
+Cs4nYfpcC0E    9 73/103  CORRECT     -16 low  | 4.34 err  -16 ratio 1.32 k 1.00/1.00 high    |    1  0.0 | wrong   | ok          | correct in main at a 0.7 % margin; whole-track verify gives a wrong pair +0.16 of tiny extras (0.14, 0.02) and it wins 4.37 vs 4.34
+LajMZuJBPLA    3 154/51  wrong    +15288 low  | no match                                     |    -    - | wrong   | A loop      | audio repeats every 2836 s (corr 0.75)
+Ane3idAqQac    9 63/89   wrong     -3117 low  | 1.30 err  -40 ratio 0.85 k 1.04/1.14 low     |    -    - | wrong   | E chance    | time-given pair absent from main: a6f737's full-day segment keeps only its global CPA (1459 s earlier) - passes() one-CPA-per-pass shortcut; time-given ratio 0.85 anyway
+DhAIJYgqmMc    4 87/42   wrong     +9675 low  | 0.61 err  -16 ratio 0.33 k 0.80/0.90 low     |  206 0.57 | wrong   | E chance    | combo#206 (P 0.57); level -81 dBFS; time-given k 0.80/0.90
+e3hz7EunI18    6 76/74   wrong     -6141 low  | 1.46 err  -32 ratio 0.81 k 1.21/0.93 low     |  235 0.62 | wrong   | E chance    | combo#235 (P 0.62); 4 near-identical events every 244 s (circuits? same-icao pairs are forbidden; no matching circuit aircraft found at 75 m/s)
+d2EqZDmIw_k   12 75/74   wrong     +3260 low  | 2.35 err  -50 ratio 0.88 k 1.00/0.89 low     |  253 0.62 | wrong   | E chance    | combo#253 (P 0.62)
+YOTJzpyb6cc    3 93/118  wrong    +22066 low  | 1.11 err   +9 ratio 0.53 k 1.25/1.09 low     |    -    - | wrong   | E chance    | no truth candidate in verified (cand combo#504); time-given k 1.25/1.09
+DbcjVt0lm2E    6 69/58   wrong     -5361 low  | 1.38 err  -11 ratio 0.74 k 0.84/0.82 low     |  202 0.45 | wrong   | E chance    | combo#202 (P 0.45); time-given k 0.84/0.82
+7NzTIUwkPE8   11 46/73   wrong    +10287 high | 1.73 err  -21 ratio 1.00 k 0.88/0.80 low     |  101 0.38 | wrong   | E chance    | truth pair combo#101 (P 0.38)
+3AELK17k8lg    5 129/38  wrong      +968 low  | 1.19 err  +36 ratio 1.10 k 0.91/1.15 low     |   30 0.07 | wrong   | D outranked | truth pair combo#30 (P 0.07); k 0.91/1.15; spot disagrees with Axx/yAs (same events)
+AxxRAFZS_5Y    4 73/69   wrong     +8810 low  | 2.50 err   +0 ratio 0.98 k 1.06/1.00 low     |   15 0.05 | wrong   | D outranked | truth pair combo#15 (P 0.05); same pair+spot as yAsLE5tgxZE (shared audio); extras: no aircraft
+iSYDIGV3Ppg    4 79/104  wrong     +4681 low  | 2.12 err  -52 ratio 1.33 k 0.99/1.05 high    |   32 0.05 | wrong   | D outranked | truth pair combo#32 (P 0.05); time-given spot ~360 km from Axx/yAs although the 4 streams hear the same events: at most one camp is right
+yAsLE5tgxZE    6 70/76   wrong     +8808 low  | 2.38 err   -4 ratio 1.11 k 1.06/1.00 low     |   10 0.03 | wrong   | D outranked | truth pair combo#10 (P 0.03); same pair+spot as AxxRAFZS_5Y
+Kz69coKyH9Q    6 128/120 wrong      -243 low  | 1.63 err   -2 ratio 1.09 k 0.92/0.99 low     |   14 0.05 | CORRECT | D outranked | truth pair combo#14 (null P 0.05); spot 1.5 km from wTRF12TtDsQ's correct answer, same aircraft a883cc; lost a 0.75 extra (PC12) to the verify box clip -> FIXED by whole-track verify
+-CKmIa-V-Iw    4 149/88  wrong    +10741 low  | 3.02 err  -22 ratio 1.52 k 1.03/0.86 low     |   30 0.15 | wrong   | E chance    | truth pair combo#30 (P 0.15); time-given ratio 1.52 but k 1.03/0.86
+UMf6oAlorlk   12 93/110  CORRECT     +11 high | 3.80 err  +11 ratio 1.51 k 1.02/1.04 high    |    1  0.0 | CORRECT | ok          | correct in main
+xUJgTNRHPMU   11 88/104  CORRECT     -12 high | 12.88 err  -12 ratio 3.19 k 1.00/1.00 high   |    1  0.0 | CORRECT | ok          | correct in main
+LYoUoV2jRL8    5 71/72   none                 | 2.18 err   -4 ratio 1.17 k 1.00/1.15 low     |    -    - | CORRECT | F crash     | exit 70 = 949M-row offset join (OOM) -> FIXED; time-given: 2.18, ratio 1.17, err -4
+TbVt7uWmnlQ    5 61/128  wrong    +23303 low  | 1.77 err  -15 ratio 1.00 k 1.01/1.06 low     |    7 0.03 | CORRECT | D outranked | truth pair combo#7 (null P 0.03); lost a C208 extra to the verify box clip -> FIXED by whole-track verify
+vDHQcL2Hvo0   13 168/147 wrong     -7952 low  | no match                                     |    -    - | wrong   | B speed     | ev1 fit v=168; 13 events look like broadband noise/clicks; 0 tracks in range
+dNs5EMP91vc   12 75/46   wrong     +7330 low  | no match                                     |    -    - | wrong   | C no pair   | tracks exist for both events (13/26) but none time-locked; not in ADS-B, or misfit
+JWKdGun5GRo    5 72/32   wrong     +9906 low  | 3.35 err  +11 ratio 0.89 k 0.82/1.17 low     |   23 0.12 | wrong   | E chance    | truth pair combo#23 (P 0.12), k 0.82/1.17
+V5AuHCx1qCw    9 86/68   wrong     +1819 low  | 2.71 err  +36 ratio 1.13 k 0.98/1.25 low     |    -    - | wrong   | E chance    | no truth candidate in verified; time-given pair at combo#229 in main with err +119
+D5KjAKFEx-Q   12 81/113  wrong    +10961 low  | 1.89 err  +27 ratio 0.81 k 0.96/0.90 low     |    -    - | wrong   | E chance    | no truth candidate in verified; time-given ratio 0.82
+cv3itW_Q6H4    3 69/90   wrong    +19238 low  | no match                                     |    -    - | wrong   | C no pair   | tracks exist (12/29), no time-locked pair; with rotorcraft 98 offset points, silence kills them
+WBZAVCwDe3o    3 54/68   wrong    +10940 low  | 2.62 err  -55 ratio 1.39 k 1.14/0.80 low     |   46 0.23 | wrong   | D outranked | same pair as main's #2 combo but another point: verify only scores each combination's best point; time-given point verifies to 2.62 > winner 2.49 (verifying 8 points/combo did not fix it)

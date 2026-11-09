@@ -182,14 +182,24 @@ def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, sta
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["g", "t", "d", "gs", "icao"])
 
 
-def offset_filter(cands: list[pd.DataFrame], events: list[Event], tol: Tolerances):
-    """Join per-event passes on grid point where CPA offsets match the recording."""
+def offset_filter(cands: list[pd.DataFrame], events: list[Event], tol: Tolerances, block=50_000):
+    """Join per-event passes on grid point where CPA offsets match the recording.
+    The join runs in blocks of `block` grid points: busy airspace (Orlando, 1M points, ~20 passes per point per
+    event) made the unfiltered many-to-many join 949M rows (~84 GB): the process was killed (exit 70)."""
     cur = cands[0].rename(columns={c: f"{c}0" for c in ["t", "d", "gs", "icao"]})
     for i in range(1, len(events)):
         nxt = cands[i].rename(columns={c: f"{c}{i}" for c in ["t", "d", "gs", "icao"]})
-        cur = cur.merge(nxt, on="g")
         want = events[i].tc - events[0].tc
-        cur = cur[(np.abs((cur[f"t{i}"] - cur["t0"]) - want) <= tol.offset_s) & (cur[f"icao{i}"] != cur["icao0"])]
+        cur = cur.reset_index(drop=True)
+        ug = np.unique(cur.g.to_numpy())
+        parts = []
+        for lo in range(0, len(ug), block):
+            g0, g1 = ug[lo], ug[min(lo + block, len(ug)) - 1]
+            left = cur[(cur.g >= g0) & (cur.g <= g1)].reset_index(names="_row")
+            m = left.merge(nxt[(nxt.g >= g0) & (nxt.g <= g1)], on="g")
+            parts.append(m[(np.abs((m[f"t{i}"] - m["t0"]) - want) <= tol.offset_s) & (m[f"icao{i}"] != m["icao0"])])
+        # back to the unblocked join's row order (left rows in order, their matches in right order)
+        cur = pd.concat(parts).sort_values("_row", kind="stable").drop(columns="_row") if parts else cur.merge(nxt.iloc[:0], on="g")
     return cur.reset_index(drop=True)
 
 
@@ -290,14 +300,15 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
     combo = [f"icao{i + 1}" for i in range(n)]
     best = cands.drop_duplicates(combo).head(top).copy()
     log(f"verifying {len(best)} best combinations against {len(extra)} extra event(s)")
-    if len(best) and len(extra):  # cut the day once to a superset of every per-row `near` window below
+    if len(best) and len(extra):  # cut the day once to the aircraft that enter any per-row box below (whole tracks)
         whens = np.concatenate([best.start.to_numpy() + e.tc for e in extra])
         pad = max(e.d for e in extra) * (1 + tol.slant_rel)
         dlat = pad / DEG + 0.01 + 1e-6  # 1e-6: the per-row test below rounds differently at the edge
         dlon = pad / (DEG * np.cos(np.radians(np.abs(best.lat.to_numpy()).max()))) + 0.01 + 1e-6
-        df = df[(df.t > whens.min() - 400) & (df.t < whens.max() + 400)
-                & (df.lat > best.lat.min() - dlat) & (df.lat < best.lat.max() + dlat)
-                & (df.lon > best.lon.min() - dlon) & (df.lon < best.lon.max() + dlon)]
+        df = df[(df.t > whens.min() - 400) & (df.t < whens.max() + 400)]
+        inbox = df[(df.lat > best.lat.min() - dlat) & (df.lat < best.lat.max() + dlat)
+                   & (df.lon > best.lon.min() - dlon) & (df.lon < best.lon.max() + dlon)]
+        df = df[df.icao.isin(inbox.icao.unique())]
     rel = np.arange(-70.0, 71.0, spec.t[1] - spec.t[0])
     ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
     extra_scores = np.zeros((len(best), len(extra)))
@@ -308,10 +319,12 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
         for i, r in enumerate(best.itertuples()):
             when = r.start + e.tc
             e0 = 0.0 if elev is None else float(elev([r.lat], [r.lon])[0])
-            near = df[(df.t > when - 400) & (df.t < when + 400)
-                      & (np.abs(df.lat - r.lat) < dmax / DEG + 0.01)
-                      & (np.abs(df.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
-            for icao, seg in segments(near, min_len=10):
+            near = df[(df.t > when - 400) & (df.t < when + 400)]
+            box = near[(np.abs(near.lat - r.lat) < dmax / DEG + 0.01)
+                       & (np.abs(near.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
+            # whole tracks of the aircraft that enter the box: clipped to the box, a fast or sparsely reported pass
+            # kept < 10 rows and was dropped (Kz69coKyH9Q: a PC12 7.6 km away, 7 rows in the box, 40 in +-400 s)
+            for icao, seg in segments(near[near.icao.isin(box.icao.unique())], min_len=10):
                 if icao in {getattr(r, c) for c in combo}:
                     continue
                 tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
