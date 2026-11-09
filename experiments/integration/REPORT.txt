@@ -1,0 +1,118 @@
+integration: round-1 experiment results merged into src/ and measured on every labeled recording
+
+VERDICT
+Kept: perf (bit-exact), rotorcraft exclusion, silence guard 60 s + airspeed sweep for every combination, and
+the Doppler-scale (k) consistency flag. Dropped after measurement: the propeller base-tone (fb) type filter and
+the narrowed 0.95-1.05 sweep.
+Final branch on 23 labeled cases: 8 correct (5 high, 3 low), 15 wrong, all of them low. 0 wrong-but-high,
+against 2 at baseline.
+y-xpMDcnQvw is now FOUND at 150 km. This is the first real run of noheli + guard60 + refine-all: 41.11,-81.57,
+0.9 km from the feeder, start 13:51:15 against the true 13:51:18, with the true pair PA32+C72R plus AA5. Its margin
+is 8.6 %, so it reads low. That matches the pruning report's 8.6 % estimate.
+Costs: y-xpMDcnQvw_akron goes from correct-high to correct-low. The k flag fires, because its spot is 0.9 km
+off and the events then need k 1.16/1.16.
+Locate time for all 23 cases: 1056 s at baseline (perf only), 792 s final. Most of the gain comes from fewer
+tracks once rotorcraft are dropped.
+
+HARNESS (validation/eval.py, committed)
+- `run VARIANT [--only ...]` snapshots src/ to /Volumes/DevScratch/pinpoint/exp/integration/<variant>/src.
+  A variant is therefore frozen at the commit it was snapshotted from (the log prints pinpoint.__file__).
+  It copies meta/spec/events/level_db, symlinks audio and overview, and runs `pinpoint locate --no-open` with
+  the case's day and bbox, one case per `lockf -k /tmp/pinpoint-cpu.lock`. Resumable.
+- `score V [V ...]` gives per-case buckets side by side. `V:margin` sets confidence from the unrounded margin
+  alone, i.e. as if there were no k flag. The search is the same, so this scores "guard60" from the kflag run.
+- Verdict: CORRECT = start within 60 s of the true go-live and, where the spot is known, within 3 km of it.
+  Spots: NE Ohio feeder 41.11,-81.57 (all Chickadee-Dee-Dee runs, including YQW34ztHbkE: same uploader,
+  assumed same feeder); N Kentucky 38.83,-84.77 (all Kentucky Backyard Wildlife runs); Huron for u8qudttB8PI.
+- Cases: the 20 runs_table.json rows that have a true start, plus GPLUdm_Q9NQ, u8qudttB8PI and 4CxVxuMVkMc.
+  GPLUdm_Q9NQ is runs_table "correct" but has no go-live time, so it gets a place-only verdict. For u8qudttB8PI
+  (runs/u8qudttB8PI, not _r300) I used day 2026-10-18 and bbox 41.38924,-82.56009,100. 4CxVxuMVkMc
+  (2026-09-08, 40.9,-73.5,120) is NOT in validation/results.json. Its truth (40.87,-73.52, 20:17:28) comes
+  from README/demo.md ("matches the video, truth given to 0.01 deg"), so it is a reference, not independent truth.
+- Baseline = current main + perf diff. U1bQZeogcsU and J8yvJJS7qTU are bit-identical to runs/*
+  (candidates, verified, result.json: experiments/integration/same.py). Other saved runs came from older code:
+  runs_table says LdusZTziHeI had "no result", while the perf baseline gives wrong-low 103 km. The baseline,
+  not runs_table, is the reference.
+
+PER-VARIANT METRICS (23 cases; full per-case table in experiments/integration/score_table.txt)
+variant (cumulative)                         c-high c-low w-high w-low none
+base   main + perf                              6     1     2    14    0   (y-xp, 0a7b wrong-high)
+heli   + drop rotorcraft                        6     1     1    15    0   y-xp -> wrong-low (Detroit, 3 %)
+guard  + guard 60 s + no stage-1 cut            6     2     1    14    0   y-xp -> CORRECT-low (scored as kflag:margin)
+kflag  + k flag, |k-1|>0.08 -> low              5     3     0    15    0   0a7b -> wrong-low; akron -> correct-low
+fbtype + fb type filter (DROPPED)               5     3     0    14    1   1Rh6_nky -> no match; no other bucket change
+       fbtype without the k flag                7     1     1    13    1   y-xp correct-high, 0a7b wrong-high at 53 %
+narrow + sweep 0.95-1.05 (DROPPED; 9 key cases only, the other 14 were not run)
+       on those 9:                              6     0     0     3    -   y-xp AND y-xp_akron -> WRONG
+final  = kflag (HEAD; U1b, y-xp, 0a7b re-run on HEAD: result.json byte-identical to kflag)
+
+IMPORTANT CASES, before (base) -> after (final)
+case               base                                        final
+U1bQZeogcsU        correct-high 0.1 km 9 s  m 0.630            same, k 1.01/0.95
+J8yvJJS7qTU        correct-high 0.0 km 2 s  m 0.233            same, k 1.04/1.00
+UsyJgZpSuus        correct-low  0.2 km 7 s  m 0.113            same, k 0.94/0.99
+GPLUdm_Q9NQ        correct-high 0.3 km      m 0.322            same, k 1.05/1.00
+u8qudttB8PI        correct-high 0.2 km 34 s m 0.498            correct-high, m 0.399 (heli: runner-up 3.60 -> 3.86)
+4CxVxuMVkMc        correct-high 0.1 km 1 s  m 0.186            same, k 1.02/1.00
+y-xpMDcnQvw        WRONG-HIGH 172 km (EC35+A139+EC35) m 0.192  correct-low 0.9 km 3 s m 0.086, k 1.17/1.22
+y-xpMDcnQvw_akron  correct-high 0.9 km 6 s  m 0.344            correct-LOW (k 1.16/1.16), same answer
+0a7boP2vrtY        WRONG-HIGH Illinois, start 5245 s off m 0.322  wrong-low, same answer, k 1.16/0.99
+
+WHAT I KEPT / DROPPED AND WHY
+(a) Rotorcraft exclusion (adsb.is_rotorcraft, filtered in cli.locate after load): kept. It removes one
+    wrong-high and breaks no correct case. It drops rotorcraft from silence breaking and verify_extra too.
+    The "candheli" alternative was never run. Margin costs with no bucket change: u8q 0.498 -> 0.399 (once
+    helicopters stop breaking silence, more hits survive and the runner-up rises); TX52 and ZJ7e wrong margins
+    rose slightly (0.011 -> 0.018, 0.014 -> 0.043).
+(b) Guard 60 s + stage 2 for every combination: kept. y-xp wrong -> correct, nothing else changed bucket.
+    Merged by hand onto the perf code (refine= removed from the signature and the recursive call).
+(c) k flag (search.doppler_scale, Tolerances.scale_ok = 0.08, result.json "doppler_scale", map info line):
+    kept, with a cost. It catches 0a7b (the last wrong-high) and flags 13 of 15 wrong answers (misses ZQBM and
+    ru5b, as the wind report found). It also demotes two right answers whose spot is 0.9 km off (y-xp and
+    akron, k 1.16-1.22). Correct-high falls 6 -> 5, but no correct answer becomes wrong, which the keep rule
+    allows. Headroom is thin both ways: 0a7b is caught at k 1.16, and akron is falsely demoted at k 1.16.
+    The threshold sits between "right answer 0.9 km off" and "wrong answer". That is the open calibration
+    question.
+(d) fb type filter (proptone.py with the class rule: unmapped piston => fb <= 150 Hz, unknown types pass):
+    measured, then REVERTED. The port matched fbase_events.csv exactly and passed 20/20 correct matches in
+    matches.csv. With the k flag in place it changes no bucket except 1Rh6_nky (wrong-low -> no match). It
+    builds a new wrong 0a7b answer from blank-type aircraft at a 53 % margin, held low only by k = 0.88. It also
+    raises other wrong margins (1Rh6 0.008 -> 0.103, BKW 0.061 -> 0.094). Upside, and the reason to revisit:
+    J8yv 0.233 -> 0.262, and y-xp 0.086 -> 0.216 (it would be correct-high without the k flag). Fix path:
+    resolve blank ICAO types (32 % of aircraft) first, so the class rule has something to act on. The code is
+    in branch history (a1ec581) and the snapshot exp/integration/fbtype/src.
+(e) Narrow sweep: dropped. It breaks y-xp (83 km) and y-xp_akron (7 km); their true pairs need k up to 1.2.
+    The margin gains on the other correct cases were real (U1b 0.63 -> 0.79, J8yv 0.26 -> 0.76, Usy 0.11 ->
+    0.23 high, 4Cx 0.19 -> 0.34; u8q fell 0.40 -> 0.27). Snapshot only, not on the branch.
+
+TESTS (tests/test_filters.py; uv run pytest: 6 passed)
+- silence guard: an intruder 45 s after the CPA is kept, one at 200 s is dropped (fails with guard 30)
+- doppler_scale recovers k = 1.0 and 1.1 from a painted synthetic Doppler line
+- is_rotorcraft is a one-liner: no test. The fb test left with the revert.
+
+DOCS (doc-vs-code mismatches fixed): README pipeline said stage 2 re-scores "the top 300" combinations with
+an airspeed sweep "(Doppler follows speed through the air)". Both were wrong (wind report; cut removed).
+Comments fixed: Tolerances.speed/airspeed, score_point docstring, doppler.C. README and SKILL.md now describe
+rotorcraft exclusion, the 60 s guard and the k rule for confidence.
+
+COMMITS (branch exp/integration, not pushed)
+be048e6 perf: one worker pool per locate, vectorized _sweep, pre-cut verify_extra day
+db1946b feat: drop rotorcraft tracks before the search
+0363135 fix: silence guard 60 s, airspeed sweep for every combination
+38d0c65 feat: flag low confidence when a primary event needs an odd Doppler scale
+a1ec581 feat: filter aircraft by propeller base tone
+7268262 test: labeled-recording harness for code variants
+6c5c747 test: score margin-only variants on the unrounded margin
+70fee4a Revert "feat: filter aircraft by propeller base tone"
+4e6b025 chore: remove unused proptone module (it was swept into 0363135 by accident; unused there)
+62e1c33 docs: Doppler follows ground speed; new filters and confidence rule
+(+ this report, queue.sh, same.py, score_table.txt)
+
+LEFT UNDONE / OPEN
+- Narrow was measured on 9 key cases only.
+- YQW34ztHbkE (wrong, 25.9 km) sits at margin 0.1497 in every variant, one rounding step from high. The k flag
+  (1.25/0.92) now also guards it.
+- Not tested: candheli (rotorcraft still break silence); a k threshold other than 0.08; using k to refine
+  position (the wind report's idea: akron's k is 1.01/1.07 at the true spot); verify_extra's own top-300 cut.
+- All runs were made while another agent's queue held the lock, so locate times exclude lock waits (log span).
+- Data: per-variant outputs in /Volumes/DevScratch/pinpoint/exp/integration/<variant>/<case>/, queue log there.
