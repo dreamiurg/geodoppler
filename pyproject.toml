@@ -1,10 +1,11 @@
 [project]
 name = "pinpoint"
 version = "0.1.0"
-description = "Add your description here"
+description = "Find where a recording was made from the Doppler curves of small aircraft in its audio"
 readme = "README.md"
+license = "MIT"
 authors = [
-    { name = "Dmytro Gaivoronsky", email = "the@dreamiurg.net" }
+    { name = "Dmytro Gaivoronsky" }
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -28,3 +29,10 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Syntax errors and undefined names only: this is research code, style is not gated.
+select = ["E9", "F63", "F7", "F82"]

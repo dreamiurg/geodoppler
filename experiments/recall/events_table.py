@@ -4,7 +4,7 @@ from pathlib import Path
 
 from rank import LAB
 
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 for run, c in LAB.items():
     f = RUNS / run / "events.json"
     if not c["adsb_cached"] or not f.exists():

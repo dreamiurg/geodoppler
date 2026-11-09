@@ -22,10 +22,12 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[1] / "runs")
 EXP = Path("/Volumes/DevScratch/pinpoint/exp/integration")
 PY = ROOT / ".venv" / "bin" / "python"
 
+# The two feeder cams are private homes: their coordinates are rounded to 0.01 deg (~1 km) on purpose,
+# so the km errors printed for them are good to about 0.5 km.
 OHIO, KY, HURON = (41.11, -81.57), (38.83, -84.77), (41.38924, -82.56009)
 # case, ADS-B day, bbox, true video start (UTC) or None, true spot or None
 CASES = [

@@ -1,8 +1,32 @@
 data/
-runs/
+runs
 .venv/
 __pycache__/
 *.pyc
 .DS_Store
 validation/run.log
 validation/*.log
+.claude/worktrees/
+.pytest_cache/
+.ruff_cache/
+
+# Experiment folders not reviewed for publication yet: they may hold precise coordinates of private homes.
+# Review and round them (see README, Privacy) before removing a line here.
+experiments/CONTEXT.md
+experiments/runs_table.json
+experiments/birdnet/
+experiments/calibration/
+experiments/crickets/
+experiments/crossday/
+experiments/dataset/*
+!experiments/dataset/labeled.json
+experiments/enf/
+experiments/enfcrowd/
+experiments/f0-type/
+experiments/forward/
+experiments/helicopters/
+experiments/nullperm/
+experiments/perf/
+experiments/pruning/
+experiments/skyhash/
+experiments/wind/

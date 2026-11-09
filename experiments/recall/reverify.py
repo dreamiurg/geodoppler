@@ -15,7 +15,7 @@ from pinpoint.dem import Elevation  # noqa: E402
 from rank import LAB, truth_unix  # noqa: E402
 
 MAIN = Path("/Volumes/DevScratch/pinpoint/exp/heldout/main")
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 
 if __name__ == "__main__":
     P, whole = int(sys.argv[1].rstrip("w")), sys.argv[1].endswith("w")

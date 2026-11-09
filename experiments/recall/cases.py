@@ -10,7 +10,7 @@ from rank import LAB, rank, truth_unix  # noqa: F401
 HERE = Path(__file__).parent
 D = Path("/Volumes/DevScratch/pinpoint/exp/recall")
 MAIN = Path("/Volumes/DevScratch/pinpoint/exp/heldout/main")
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 given = {r["run"]: r for r in json.loads((D / "start60" / "table.json").read_text())}
 nullp = {}
 for line in (D / "null_rank.txt").read_text().splitlines():

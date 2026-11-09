@@ -16,7 +16,7 @@ from pinpoint.flyover import Track  # noqa: E402
 
 from rank import LAB  # noqa: E402
 
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 OUT = Path("/Volumes/DevScratch/pinpoint/exp/recall")
 types = adsb._types()
 var = sys.argv[1]

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 v, case = sys.argv[1:3]
-a, b = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs") / case, Path("/Volumes/DevScratch/pinpoint/exp/integration") / v / case
+a, b = (Path(__file__).resolve().parents[2] / "runs") / case, Path("/Volumes/DevScratch/pinpoint/exp/integration") / v / case
 for f in ("candidates.parquet", "verified.parquet"):
     if not (a / f).exists():
         continue

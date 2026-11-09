@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rank import LAB
 
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 
 for r in sys.argv[1:]:
     c = LAB[r]

@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "validation"))
 from eval import km  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
-MAIN = Path("/Users/dreamiurg/src/dreamiurg/pinpoint")
+MAIN = Path(__file__).resolve().parents[2]
 RUNS = MAIN / "runs"
 LABELED = MAIN / "experiments" / "dataset" / "labeled.json"
 EXP = Path("/Volumes/DevScratch/pinpoint/exp/heldout")

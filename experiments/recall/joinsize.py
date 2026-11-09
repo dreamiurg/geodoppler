@@ -10,7 +10,7 @@ from pinpoint import cli, search  # noqa: E402
 from pinpoint.dem import Elevation  # noqa: E402
 
 if __name__ == "__main__":
-    run = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs/LYoUoV2jRL8")
+    run = (Path(__file__).resolve().parents[2] / "runs/LYoUoV2jRL8")
     sp, evs = cli.load_spec(run), cli.load_events(run)
     evs, _ = cli.split_events(evs)
     df = cli.load_days(["2026-11-07"])

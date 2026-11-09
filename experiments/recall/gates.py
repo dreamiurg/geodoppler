@@ -26,7 +26,7 @@ from pinpoint.dem import Elevation  # noqa: E402
 
 from rank import LAB, truth_unix  # noqa: E402
 
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 
 
 def offset_any(cands, events, tol, same):

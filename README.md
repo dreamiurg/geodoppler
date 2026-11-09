@@ -59,7 +59,7 @@ Needs `yt-dlp` and `ffmpeg` on PATH. ADS-B days cache under `$PINPOINT_DATA` (de
    scores 0), at least 3 events, and every primary event explained at a Doppler scale within 1 ± 0.08
    (`doppler_scale`; right matches sit at 0.94-1.05). It costs one extra search per decoy day. Without
    decoys, `high` needs a >= 15 % margin over the next aircraft combination plus the same Doppler-scale
-   check; that rule is weak (`experiments/calibration`: 11 of 65 decoy days read `high`).
+   check; that rule is weak (it read `high` on 11 of 65 wrong-day runs).
 
 ## Validation
 
@@ -87,11 +87,19 @@ wrong, one of them matched medical helicopters. There, a found recording start t
 real go-live time is what separates right from wrong. After dropping rotorcraft, widening the silence guard,
 sweeping every combination and adding the Doppler-scale check, none of 23 labeled recordings
 (`validation/eval.py`) gets a wrong `high`; the helicopter case is found at 150 km (0.9 km off, `low`).
-On 36 held-out livestreams nothing was tuned on (`experiments/heldout`), 4 were found; the margin rule
-said `high` 4 times and was wrong once (a 43 % margin), the `--decoys 5` rule said `high` 3 times, all right.
-The decoy ratio alone did not separate them (a wrong answer at 1.22, a right one at 1.21); the
-Doppler-scale check caught the wrong one. Only 4 positives: treat the 1.2 threshold as provisional. Airport plane-spotting streams fail: ground operations and landings are
-not straight constant-speed flyovers. Full table: `validation/results.md`.
+On 36 held-out livestreams nothing was tuned on (`experiments/heldout`), 4 were found at first and 6 after
+two recall fixes (`experiments/recall/REPORT.txt` sorts the misses: looped audio, jets, no ADS-B, or the right
+aircraft pair outranked by a coincidence). After the fixes the margin rule said `high` 4 times and was wrong
+once (a 43 % margin); the `--decoys 5` rule said `high` twice, both right, and never for a wrong answer.
+The 1.2 threshold rests on 6 positives and was not retuned after the fixes: treat it as provisional.
+Airport plane-spotting streams fail: ground operations and landings are not straight constant-speed
+flyovers. Full table: `validation/results.md`.
+
+## Privacy
+
+This method can place a microphone to within a few hundred meters from background noise alone. Some
+recordings used here are livestreams from private homes; their coordinates in this repo are rounded to
+0.01° (about 1 km) on purpose. Please do the same if you publish results about someone else's recording.
 
 ## Limits
 
@@ -101,3 +109,7 @@ not straight constant-speed flyovers. Full table: `validation/results.md`.
 - Ground elevation comes from Copernicus GLO-90 (downloaded per 1° tile on first use).
 - One UTC day of tracks per search; a recording across midnight UTC needs `--days 2`.
 - One flyover is not enough without a known start time, and not enough for a CONUS-wide search even with one.
+
+## License
+
+[MIT](LICENSE)

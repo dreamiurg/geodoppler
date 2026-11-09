@@ -1,14 +1,15 @@
 ---
 name: pinpoint
-description: Find where a YouTube video (or any recording) was filmed and show it on a map. Use when Dmytro gives a video URL and asks where it was taken, to geolocate a clip, or says "pinpoint". Primary method matches faint propeller-aircraft Doppler curves in the audio against public ADS-B flight history (works with zero visual clues); falls back to metadata and visual clues.
+description: Find where a YouTube video (or any recording) was filmed and show it on a map. Use when the user gives a video URL and asks where it was taken, to geolocate a clip, or says "pinpoint". Primary method matches faint propeller-aircraft Doppler curves in the audio against public ADS-B flight history (works with zero visual clues); falls back to metadata and visual clues.
 ---
 
 # pinpoint
 
-Repo: `~/src/dreamiurg/pinpoint` (run every command from there with `uv run pinpoint ...`).
+Run every command from the repo root with `uv run pinpoint ...`. This file lives in `.claude/skills/pinpoint/` of the
+repo; if the skill is symlinked from elsewhere, resolve the link to find the root.
 Work happens in `runs/<video_id>/`. ADS-B days cache in `~/.cache/pinpoint/adsb/<day>` (~4 GB download + 40 s build per new day).
 
-Do not ask Dmytro questions mid-run. Decide, state the assumption in the final report.
+Do not ask the user questions mid-run. Decide, state the assumption in the final report.
 
 ## 1. Fetch and read the clues
 

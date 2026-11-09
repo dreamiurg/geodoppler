@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from pinpoint import cli  # noqa: E402
 
 run, lo, hi = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
-d = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs") / run
+d = (Path(__file__).resolve().parents[2] / "runs") / run
 sp = cli.load_spec(d)
 evs = cli.load_events(d)
 S = sp.crop(0, sp.t[-1], 40, 1000).S.astype(np.float32)

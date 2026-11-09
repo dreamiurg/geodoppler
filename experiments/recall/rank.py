@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-LAB = {c["run"]: c for c in json.loads(Path("/Users/dreamiurg/src/dreamiurg/pinpoint/experiments/dataset/labeled.json").read_text())}
+LAB = {c["run"]: c for c in json.loads((Path(__file__).resolve().parents[2] / "experiments/dataset/labeled.json").read_text())}
 
 
 def truth_unix(c):

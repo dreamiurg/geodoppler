@@ -18,6 +18,9 @@ frames: only the audio, a date, and a search area.
 
 ## Results that pass both checks
 
+The feeder cams are private homes, so their coordinates here are rounded to 0.01° (about 1 km). The distances
+between answers were measured on the unrounded values.
+
 | Video | Views | Search area | Answer | Place check | Time check (found / real) | Aircraft heard | Margin |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [Chickadee's LIVE Bird Feeder - Northeast Ohio, Sep 30 2026](https://www.youtube.com/watch?v=U1bQZeogcsU) | 264 | 150 km circle over NE Ohio | 41.11, -81.57 (Akron / Cuyahoga Falls) | in NE Ohio, as stated | 13:14:01 / 13:14:10 UTC (9 s) | Mooney M20, C-130J, 2x Cessna 172 | 63 % |

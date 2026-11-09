@@ -10,7 +10,7 @@ from pinpoint import cli  # noqa: E402
 
 from rank import LAB  # noqa: E402
 
-RUNS = Path("/Users/dreamiurg/src/dreamiurg/pinpoint/runs")
+RUNS = (Path(__file__).resolve().parents[2] / "runs")
 for run, c in LAB.items():
     if not c["adsb_cached"] or not (RUNS / run / "spec.npz").exists():
         continue
