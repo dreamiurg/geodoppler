@@ -1,6 +1,8 @@
-# pinpoint
+# geodoppler
 
 Find where a video was recorded from the sound of small aircraft flying past it.
+
+The command-line tool and the Python package are still called `pinpoint`, the project's first name.
 
 A propeller aircraft passing within a few km leaves a falling "Doppler curve" in the audio, often
 inaudible but clear in a spectrogram. Its shape gives the aircraft's speed and closest distance; the gap
