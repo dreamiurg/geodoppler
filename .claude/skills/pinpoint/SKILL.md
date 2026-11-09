@@ -56,7 +56,8 @@ start, phone call): add `--start 2026-09-08T20:17:30` (the video's own start, al
 with no known time is refused (tested: 69 km off, 0.8 % margin): go to section 3.
 
 Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. `result.json` has `confidence`:
-`high` when `score` beats the best *other aircraft combination* by >= 15 %, else `low`. In validation every
+`high` when `score` beats the best *other aircraft combination* by >= 15 % and every primary event fits its
+aircraft at a Doppler scale within 1 ± 0.08 (`doppler_scale`), else `low`. In validation every
 correct answer had 18-50 % and every wrong one 0.04-8 %. Report a `low` result as "no reliable acoustic
 fix" and fall back to section 3; mention the acoustic guess only as a weak hint. Boats, cars and trains
 also make Doppler curves; a recording full of them (marinas, roads) gives `low` results.
@@ -87,7 +88,8 @@ recording start time (acoustic path gives it to the second), aircraft heard, ass
 - Needs the audio to carry aircraft sound: an unedited stretch (cuts break the time offsets) and a
   non-jet flyover within ~8 km. Jets are filtered out. Jets low on approach DO make clean tones (seen under CVG, 107-144 m/s),
   but too many look-alike tracks share the approach path; backyards under airline approaches fail.
-- Wide searches (150-300 km): `high` can be wrong (helicopters, 19-32 % margins seen). For livestream
+- Wide searches (150-300 km): `high` can be wrong (19-32 % margins seen before rotorcraft were dropped and the
+  Doppler-scale check added; a 0.9 km position error also trips that check, so a right answer can read `low`). For livestream
   archives, check found `recording_start_utc` against `release_timestamp` after the run; right answers
   matched within 2-33 s. Watch for looped "1 hour" uploads: identical events at a fixed offset.
 - ADS-B = adsb.lol community receivers: dense in the US/Europe, thin elsewhere; history from 2023 on.

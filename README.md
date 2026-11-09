@@ -41,15 +41,19 @@ Needs `yt-dlp` and `ffmpeg` on PATH. ADS-B days cache under `$PINPOINT_DATA` (de
    ideal straight-line flyover (f0, speed, slant distance, CPA time) by differential evolution;
    visible harmonics detected and scored too.
 2. **Candidates** (`search.py`): 200 m grid; for each event, track segments whose ground speed fits; for every
-   grid point in reach, delayed CPA time (CPA + slant/c) and slant distance.
+   grid point in reach, delayed CPA time (CPA + slant/c) and slant distance. Jets and rotorcraft (known ICAO
+   types) are dropped up front.
 3. **Filters**: CPA-time offset between the two strongest events (±10 s); silence (no other non-jet passes
-   close in between).
+   close in between, ignoring ±60 s around each event's CPA).
 4. **Scoring**: per surviving point (100 m), the emission-time Doppler curve of each real track
    (`flyover.py`), brightness summed along it. Event 1 absorbs measurement error (±6 s, ±4 % f0); event 2 is
-   locked to geometry (±2 s). Stage 1 without wind; stage 2 re-scores the top 300 aircraft combinations
-   with a ±15 % airspeed sweep (Doppler follows speed through the air, ADS-B gives ground speed).
+   locked to geometry (±2 s). Stage 1 at the plain radial velocity; stage 2 re-scores the best points of every
+   aircraft combination with a ±15 % radial-velocity scale sweep. That scale absorbs sound-speed and geometry
+   error, not wind: Doppler follows ground speed, and wind only shifts the effective sound speed (~W/c).
 5. **Verification**: every other detected event must be explained, time-locked, by some real aircraft at
    the candidate; that adds to the score (0 if none, so a spurious event costs nothing).
+6. **Confidence**: `high` needs a >= 15 % margin over the next aircraft combination and every primary event
+   explained at a Doppler scale within 1 ± 0.08 (`doppler_scale` in result.json); right matches sit at 0.94-1.05.
 
 ## Validation
 
@@ -74,7 +78,9 @@ know when it is wrong".
 In this 100 km set every `high` answer was right and every wrong answer was flagged `low` (only 2 high
 answers). The wider 150-300 km searches in `demo.md` broke that: two `high` answers (19 % and 32 %) were
 wrong, one of them matched medical helicopters. There, a found recording start that matches a livestream's
-real go-live time is what separates right from wrong. Airport plane-spotting streams fail: ground operations and landings are
+real go-live time is what separates right from wrong. After dropping rotorcraft, widening the silence guard,
+sweeping every combination and adding the Doppler-scale check, none of 23 labeled recordings
+(`validation/eval.py`) gets a wrong `high`; the helicopter case is found at 150 km (0.9 km off, `low`). Airport plane-spotting streams fail: ground operations and landings are
 not straight constant-speed flyovers. Full table: `validation/results.md`.
 
 ## Limits
