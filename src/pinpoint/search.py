@@ -212,7 +212,7 @@ def silence_filter(hits, df, events, pts: Points, tol: Tolerances, elev=None):
     own = np.zeros(len(m), bool)
     for i in range(n):
         own |= m.icao_o.to_numpy() == m[f"icao{i}"].to_numpy()
-    guard = 30.0  # s; the events themselves span ~±60 s around CPA
+    guard = 60.0  # s; the events themselves span ~±60 s around CPA (30 s dropped the y-xpMDcnQvw true pair)
     between = (m.t_o > m.t0 + guard) & (m.t_o < m[f"t{n - 1}"] - guard)
     bad = m.loc[between & ~own, "index"].unique()
     return hits.drop(index=bad).reset_index(drop=True)
@@ -373,11 +373,11 @@ def _score_job(job):
 
 def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, fine=100.0,
            tol: Tolerances = Tolerances(), elev=None, log=print, workers=10, start=None,
-           refine=300, per_combo=8, ex=None, chunk=32) -> pd.DataFrame:
+           per_combo=8, ex=None, chunk=32) -> pd.DataFrame:
     """`ex`: a pool() to reuse across tiles; without one, locate starts its own."""
     if ex is None:
         with pool(spec, events, elev, workers, tol) as ex:
-            return locate(spec, events, df, bbox, step, fine, tol, elev, log, workers, start, refine, per_combo, ex, chunk)
+            return locate(spec, events, df, bbox, step, fine, tol, elev, log, workers, start, per_combo, ex, chunk)
     pts = Points.grid(bbox, step, elev)
     glat, glon = pts.lat, pts.lon
     log(f"grid: {len(pts):,} points at {step:.0f} m")
@@ -407,11 +407,11 @@ def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, 
              for (jid, key, la, lo, t, split), seg in zip(jobs, segs) for i in range(0, len(la), chunk)]
     first = pd.DataFrame([r for part in ex.map(_score_job, tasks, chunksize=max(1, len(tasks) // (workers * 8)))
                           for r in part]).sort_values("score", ascending=False)
-    # stage 2: the best points of the top combinations, with the wind (airspeed) sweep
-    keep = first.drop_duplicates("job").head(refine)["job"]
-    top = first[first.job.isin(keep)].groupby("job", sort=False).head(per_combo)
+    # stage 2: the best points of every combination, with the airspeed sweep. No top-N cut on the no-sweep score:
+    # it ranked the y-xpMDcnQvw true pair #346 of 444 (#127 with the sweep)
+    top = first.groupby("job", sort=False).head(per_combo)
     jobs2 = [(jid, jobs[jid][1], g.lat.to_numpy(), g.lon.to_numpy(), tol, 0, segs[jid]) for jid, g in top.groupby("job", sort=False)]
-    log(f"refining {len(top):,} points of the top {len(jobs2)} combinations with wind")
+    log(f"refining {len(top):,} points of {len(jobs2)} combinations with the airspeed sweep")
     rows = [r for part in ex.map(_score_job, jobs2, chunksize=max(1, len(jobs2) // (workers * 4))) for r in part]
     out = pd.DataFrame(rows).sort_values("score", ascending=False).reset_index(drop=True)
     log(f"scored {len(first):,} points at {fine:.0f} m; refined {len(out):,}")
