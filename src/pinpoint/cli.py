@@ -222,7 +222,58 @@ def tiles(bbox, size=2.0):
             yield (a, b, min(a + size, lat1), min(b + size, lon1))
 
 
-def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, days=1) -> dict:
+def split_events(all_evs):
+    """The two strongest events search; the rest verify."""
+    by_score = sorted(all_evs, key=lambda e: -e.score)
+    return sorted(by_score[:2], key=lambda e: e.tc), sorted(by_score[2:], key=lambda e: e.tc)
+
+
+def day_range(date: str, days: int) -> list[str]:
+    return [(pd.Timestamp(date) + pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
+
+
+def load_days(dates: list[str]) -> pd.DataFrame:
+    df = pd.concat([pd.read_parquet(adsb.ensure_day(d, DATA)) for d in dates], ignore_index=True)
+    df = df.astype({"icao": "category", "type": "category"})
+    if len(dates) > 1:  # each day's parquet is already (icao, t)-sorted
+        df = df.sort_values(["icao", "t"], kind="stable")
+    # validation: rotorcraft never made a detected event at a known spot, but medical helicopters won y-xpMDcnQvw
+    types = adsb._types()
+    return df[~df["type"].isin([c for c in df["type"].cat.categories if adsb.is_rotorcraft(c, types)])]
+
+
+def decoy_days(date: str, n: int, days: int = 1) -> list[str]:
+    """Up to n cached ADS-B days that, with their days-1 following days, are all cached and do not overlap the
+    recording's days; nearest first. Only reads the cache: a decoy must never start a ~4 GB download."""
+    cached = {p.parent.name for p in (DATA / "adsb").glob("*/props.parquet") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.parent.name)}
+    own, t = set(day_range(date, days)), pd.Timestamp(date)
+    ok = [d for d in cached if set(day_range(d, days)) <= cached and not set(day_range(d, days)) & own]
+    return sorted(ok, key=lambda d: (abs(pd.Timestamp(d) - t), d))[:n]
+
+
+def search_day(sp, evs, extra, df, bbox, step, start, elev, ex, save: Path | None = None) -> pd.DataFrame | None:
+    """Tile search + extra-event verification on one ADS-B frame; None if nothing matched. `save`: write parquets."""
+    res = []
+    for tb in tiles(bbox):
+        pad = 0.15
+        sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
+        log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
+        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start, elev=elev, ex=ex)
+        if len(r):
+            res.append(r)
+    if not res:
+        return None
+    cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)
+    if save:
+        cands.to_parquet(save / "candidates.parquet")
+    if extra:
+        cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log, elev=elev)
+        if save:
+            cands.to_parquet(save / "verified.parquet")
+    return cands
+
+
+def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, days=1, decoys=0) -> dict:
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
         raise SystemExit(f"--date must be YYYY-MM-DD, got {date!r}")
     sp, all_evs = load_spec(run), load_events(run)
@@ -231,41 +282,37 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     if len(all_evs) < 2 and start is None:
         # validation: 1 event, unknown time -> 2.7 h search, wrong spot, 0.8 % margin
         raise SystemExit("only one flyover: need a second one or a known start time (--start)")
-    by_score = sorted(all_evs, key=lambda e: -e.score)
-    evs = sorted(by_score[:2], key=lambda e: e.tc)
-    extra = sorted(by_score[2:], key=lambda e: e.tc)
+    evs, extra = split_events(all_evs)
     log(f"searching with events at {', '.join(f'{e.tc:.0f}s' for e in evs)}; verifying with "
         f"{', '.join(f'{e.tc:.0f}s' for e in extra) or 'none'}")
     log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
-    dates = [(pd.Timestamp(date) + pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
-    df = pd.concat([pd.read_parquet(adsb.ensure_day(d, DATA)) for d in dates], ignore_index=True)
-    df = df.astype({"icao": "category", "type": "category"})
-    if days > 1:  # each day's parquet is already (icao, t)-sorted
-        df = df.sort_values(["icao", "t"], kind="stable")
-    # validation: rotorcraft never made a detected event at a known spot, but medical helicopters won y-xpMDcnQvw
-    types = adsb._types()
-    df = df[~df["type"].isin([c for c in df["type"].cat.categories if adsb.is_rotorcraft(c, types)])]
+    df = load_days(day_range(date, days))
     elev = Elevation(DATA)
-    res = []
+    null = None
     with search.pool(sp, evs, elev) as ex:
-        for tb in tiles(bbox):
-            pad = 0.15
-            sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
-            log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
-            r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start, elev=elev, ex=ex)
-            if len(r):
-                res.append(r)
-    if not res:
-        raise SystemExit("no location matched all events; widen --bbox, check --date, or refit events")
-    cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)
-    cands.to_parquet(run / "candidates.parquet")
-    if extra:
-        cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log, elev=elev)
-        cands.to_parquet(run / "verified.parquet")
-    return report(run, cands, df, evs, date, open_map, extra, sp, elev)
+        cands = search_day(sp, evs, extra, df, bbox, step, start, elev, ex, save=run)
+        if cands is None:
+            raise SystemExit("no location matched all events; widen --bbox, check --date, or refit events")
+        if decoys:
+            null = {}
+            for d in decoy_days(date, decoys, days):
+                shift = (pd.Timestamp(d) - pd.Timestamp(date)).total_seconds()  # --start: same time of day
+                log(f"decoy day {d}: the same search on another day's ADS-B")
+                c = search_day(sp, evs, extra, load_days(day_range(d, days)), bbox, step,
+                               None if start is None else (start[0] + shift, start[1] + shift), elev, ex)
+                null[d] = 0.0 if c is None else float(c.score.iloc[0])  # no match on a decoy day = 0
+                log(f"decoy day {d}: best score {null[d]:.3f}")
+            if len(null) < decoys:
+                log(f"WARNING: {len(null)} cached decoy day(s) of {decoys} asked; {DECOY_RATIO} was calibrated with 4-7")
+    return report(run, cands, df, evs, date, open_map, extra, sp, elev, null)
 
 
-def report(run, cands, df, evs, date, open_map=True, extra=(), sp=None, elev=None) -> dict:
+# experiments/calibration: correct answers beat the best of 4-7 other days' searches by 1.24-1.47x, wrong ones
+# 0.75-0.97x, a decoy against the other decoys at most 1.21x. Needs >= 3 events: the gap comes from verification.
+DECOY_RATIO = 1.2
+
+
+def report(run, cands, df, evs, date, open_map=True, extra=(), sp=None, elev=None, null=None) -> dict:
     n = len(evs)
     best = cands.iloc[0]
     combo = [f"icao{i + 1}" for i in range(n)]
@@ -284,20 +331,29 @@ def report(run, cands, df, evs, date, open_map=True, extra=(), sp=None, elev=Non
         tracks.append({"path": g[["lat", "lon"]].round(5).values.tolist(),
                        "label": html.escape(f"{icao} {types.get(icao, '')}: heard at {tc + off:.0f}s = {pd.to_datetime(t_cpa, unit='s'):%H:%M:%S} UTC")})
     margin = None if runner is None else (best.score - runner.score) / runner.score
-    # validation: correct answers had 18-50 % margins, wrong ones 0.04-8 %
+    # margin rule (no decoys): weak. experiments/calibration: a wrong answer had 32 %, decoy days reached 41 %,
+    # a right one had 11 %; the margin rule said "high" on 11 of 65 decoy days
     confidence = "unknown" if margin is None else "high" if margin >= 0.15 else "low"
-    scales = []
+    ratio = None
+    if null:  # decoy rule replaces the margin rule; every decoy at 0 (ratio None) passes it
+        top = max(null.values())
+        ratio = None if top == 0 else float(best.score) / top
+        confidence = "high" if (ratio is None or ratio >= DECOY_RATIO) and n + len(extra) >= 3 else "low"
+    scales, kflag = [], False
     if sp is not None:  # experiments/wind: right answers' primary events need k 0.94-1.05; 13 of 15 wrong ones did not
         e0 = 0.0 if elev is None else float(elev([best.lat], [best.lon])[0])
         scales = [search.doppler_scale(sp, search._track(df, best[f"icao{i + 1}"], best.start + e.tc), e,
                                        best.lat, best.lon, best.start, e0) for i, e in enumerate(evs)]
-        if any(abs(k - 1) > search.Tolerances().scale_ok for k in scales):
+        kflag = any(abs(k - 1) > search.Tolerances().scale_ok for k in scales)
+        if kflag:
             confidence = "low"
     result = {
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
         "runner_up_score": None if runner is None else round(float(runner.score), 3),
         "margin": None if margin is None else round(float(margin), 3), "confidence": confidence,
         "doppler_scale": [round(k, 2) for k in scales],
+        "decoy_ratio": None if ratio is None else round(ratio, 3),
+        "decoy_scores": None if null is None else {d: round(s, 3) for d, s in null.items()},
         "recording_start_utc": f"{pd.to_datetime(best.start - off, unit='s'):%Y-%m-%d %H:%M:%S}",
         "analysed_from_s": off,
         "aircraft": [{"heard_at_s": round(tc + off, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
@@ -308,13 +364,18 @@ def report(run, cands, df, evs, date, open_map=True, extra=(), sp=None, elev=Non
     (run / "result.json").write_text(json.dumps(result, indent=2))
     info = {
         "Best estimate": f"<a href='{result['google_maps']}' target=_blank>{result['lat']}, {result['lon']}</a>",
-        "Confidence": f"{confidence} (margin {result['margin']:.0%} over the next aircraft combination)" if margin is not None else confidence,
+        "Confidence": f"{confidence} ({'decoy days, see below; ' if null else ''}margin {result['margin']:.0%} over the next aircraft combination)" if margin is not None else confidence,
         "Score": f"{result['score']} (next aircraft combination: {result['runner_up_score']})",
         "Recording started": result["recording_start_utc"] + " UTC",
         "Aircraft heard": "<br>".join(html.escape(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}") for a in result["aircraft"]),
         "Events unexplained": ", ".join(f"{t:.0f}s" for t in result["events_unexplained"]) or "none",
-        "Doppler scale": ", ".join(f"{k:.2f}" for k in scales) + (" (outside 1 +- 0.08: confidence low)" if confidence == "low" and margin is not None and margin >= 0.15 else ""),
+        "Doppler scale": ", ".join(f"{k:.2f}" for k in scales) + (" (outside 1 +- 0.08: confidence low)" if kflag else ""),
     }
+    if null is not None:
+        info["Decoy days"] = (("no cached decoy day: margin rule" if not null else
+                               f"score / best other-day score = {'no other-day match' if ratio is None else f'{ratio:.2f}'}"
+                               f" (high needs >= {DECOY_RATIO} and >= 3 events)<br>")
+                              + ", ".join(f"{d}: {s:.3f}" for d, s in null.items()))
     title = meta.get("title") or run.name
     path = mapview.render(cands, run / "map.html", title, info, tracks)
     log(f"best: {result['lat']}, {result['lon']}  score {result['score']} (runner-up {result['runner_up_score']}), confidence {confidence}")
@@ -350,6 +411,8 @@ def main(argv=None):
         p.add_argument("--days", type=int, default=1, help="consecutive UTC days of ADS-B from --date (recording across midnight: 2)")
         p.add_argument("--start", help="known recording start, UTC ISO time, e.g. 2026-09-08T20:17:40")
         p.add_argument("--start-window", type=float, default=120, help="+/- seconds around --start")
+        p.add_argument("--decoys", type=int, default=0,
+                       help="also search N other cached ADS-B days; high confidence then needs >= 1.2x their best (use 5)")
         p.add_argument("--no-open", action="store_true")
         if p.prog.endswith("run"):
             p.add_argument("--box", action="append", type=parse_box)
@@ -379,4 +442,4 @@ def main(argv=None):
             d = a.date or f"{ts:%Y-%m-%d}"
         if not d:
             raise SystemExit("--date required")
-        locate(run, d, a.bbox, a.step, not a.no_open, start, a.days)
+        locate(run, d, a.bbox, a.step, not a.no_open, start, a.days, a.decoys)

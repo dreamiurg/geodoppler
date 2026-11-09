@@ -55,10 +55,14 @@ start, phone call): add `--start 2026-09-08T20:17:30` (the video's own start, al
 `--bbox conus` (tested: wrong state, 0.6 % margin, 5.5 h); it can work inside a small region. One event
 with no known time is refused (tested: 69 km off, 0.8 % margin): go to section 3.
 
-Output: `runs/<id>/map.html`, `result.json`, `candidates.parquet`. `result.json` has `confidence`:
-`high` when `score` beats the best *other aircraft combination* by >= 15 % and every primary event fits its
-aircraft at a Doppler scale within 1 ± 0.08 (`doppler_scale`), else `low`. In validation every
-correct answer had 18-50 % and every wrong one 0.04-8 %. Report a `low` result as "no reliable acoustic
+Add `--decoys 5` whenever there are >= 3 events: it reruns the same search on the 5 nearest other cached
+ADS-B days (never downloads; about 6x the time). Output: `runs/<id>/map.html`, `result.json`,
+`candidates.parquet`. `result.json` has `confidence`. With decoys: `high` when `score` is >= 1.2x the best
+decoy-day score (`decoy_ratio`, `decoy_scores`), there are >= 3 events, and every primary event fits its
+aircraft at a Doppler scale within 1 ± 0.08 (`doppler_scale`), else `low`. A 2-event recording is always
+`low` with decoys: the true day only stands out through the extra events. Without decoys: `high` when
+`score` beats the best *other aircraft combination* by >= 15 % and the Doppler-scale check passes; that
+rule is weak (a wrong answer had a 32 % margin, a right one 11 %). Report a `low` result as "no reliable acoustic
 fix" and fall back to section 3; mention the acoustic guess only as a weak hint. Boats, cars and trains
 also make Doppler curves; a recording full of them (marinas, roads) gives `low` results.
 

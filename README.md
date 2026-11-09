@@ -25,6 +25,7 @@ uv run pinpoint events runs/<id>                # auto-detect flyovers -> events
 uv run pinpoint events runs/<id> --box 2080,2240,80,190,1+2 --box 2990,3140,95,185   # or pick them
 uv run pinpoint locate runs/<id> --date YYYY-MM-DD --bbox lat0,lon0,lat1,lon1   # or lat,lon,km | conus
 uv run pinpoint locate runs/<id> --bbox conus --start 2026-09-08T20:17:30       # one event + known time
+uv run pinpoint locate runs/<id> --date YYYY-MM-DD --bbox lat,lon,km --decoys 5   # confidence vs 5 other days
 uv run pinpoint frames runs/<id>                # stills, for visual clues when there is no aircraft audio
 uv run pinpoint pin runs/<id> LAT LON --note "..."   # map a location judged from other clues
 ```
@@ -52,8 +53,13 @@ Needs `yt-dlp` and `ffmpeg` on PATH. ADS-B days cache under `$PINPOINT_DATA` (de
    error, not wind: Doppler follows ground speed, and wind only shifts the effective sound speed (~W/c).
 5. **Verification**: every other detected event must be explained, time-locked, by some real aircraft at
    the candidate; that adds to the score (0 if none, so a spurious event costs nothing).
-6. **Confidence**: `high` needs a >= 15 % margin over the next aircraft combination and every primary event
-   explained at a Doppler scale within 1 ± 0.08 (`doppler_scale` in result.json); right matches sit at 0.94-1.05.
+6. **Confidence**: with `--decoys N` (use 5), the same search also runs on the N nearest other cached ADS-B
+   days (never downloaded; `--start` shifted to the same time of day). `high` then needs the score to be
+   >= 1.2x the best decoy-day score (`decoy_ratio`, `decoy_scores` in result.json; a decoy with no match
+   scores 0), at least 3 events, and every primary event explained at a Doppler scale within 1 ± 0.08
+   (`doppler_scale`; right matches sit at 0.94-1.05). It costs one extra search per decoy day. Without
+   decoys, `high` needs a >= 15 % margin over the next aircraft combination plus the same Doppler-scale
+   check; that rule is weak (`experiments/calibration`: 11 of 65 decoy days read `high`).
 
 ## Validation
 
