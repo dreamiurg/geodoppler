@@ -114,6 +114,9 @@ FIX KEPT
 2. verify_extra on whole tracks (d673cdd): the aircraft that enter an extra event's box are verified on their
    full +-400 s track instead of the box-clipped part (gates unchanged). Re-verifying main's candidates alone
    (reverify_1w.json): Kz69coKyH9Q and TbVt7uWmnlQ become correct, Cs4nYfpcC0E wrong.
+   Limit: the segment's global CPA within +-400 s is scored, not the one nearest the locked time, so a
+   loitering aircraft can now lose a match the clipped pass had (likely why UMf6oAlorlk's own score fell
+   3.798 -> 3.752). Not refined: picking the nearest CPA would be one more choice tuned on this set.
 
 Before/after on all 36 (heldout.py score main / score new main  vs  score whole whole):
                         main (step1 + step3)        whole (both fixes)
@@ -144,4 +147,5 @@ NOT CHECKED / OPEN
 - The 4 Wisconsin streams: which camp is right.
 - LYoUoV2jRL8's gain was measured with both fixes; not run with fix 1 alone (its time-given run, old verify,
   found the same spot at ratio 1.17, so fix 1 alone likely suffices).
+- Whole-track verify scores each segment's global CPA in +-400 s, not the one nearest the locked time.
 - Kz69/TbVt wins are thin (margins 0.5 % and 1.7 %); any scoring change can flip them back.
