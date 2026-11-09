@@ -7,8 +7,6 @@ Validation (experiments/f0-type): +-5 % bands pass all 20 matches of correct run
 Most rpm limits are typical values, not manuals. Unknown types pass, as adsb.is_jet keeps them.
 """
 
-from dataclasses import replace
-
 import numpy as np
 import pandas as pd
 
@@ -63,11 +61,6 @@ def base_tone(spec: Spec, e: Event) -> tuple[float, float]:
             best[i] = np.interp(n * fb, F, p).mean() - np.interp((n + 0.5) * fb, F, p).mean()
     k = int(np.nanargmax(best))
     return float(FB[k]), float(best[k])
-
-
-def tag(spec: Spec, e: Event) -> Event:
-    fb, s = base_tone(spec, e)
-    return replace(e, fb=fb, fb_score=s)
 
 
 def plausible(type_code, fb, fb_score, types, tol=0.05, min_score=0.4) -> bool:

@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import adsb, audio, doppler, mapview, proptone, search
+from . import adsb, audio, doppler, mapview, search
 from .dem import Elevation
 
 DATA = Path(os.environ.get("PINPOINT_DATA", Path.home() / ".cache" / "pinpoint"))
@@ -170,7 +170,7 @@ def events(run: Path, boxes=None) -> list[doppler.Event]:
     else:
         log("auto-detecting Doppler events (a few minutes per hour of audio)")
         evs = doppler.detect_events(sp, log=log)
-    evs = sorted((proptone.tag(sp, e) for e in evs), key=lambda e: e.tc)
+    evs.sort(key=lambda e: e.tc)
     for e in evs:
         log(f"event tc={e.tc:.1f}s v={e.v:.0f} m/s slant={e.d:.0f} m f0={e.f0:.1f} Hz score={e.score:.2f}")
     (run / "events.json").write_text(json.dumps([e.to_dict() for e in evs], indent=2))
@@ -228,7 +228,6 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     sp, all_evs = load_spec(run), load_events(run)
     if not all_evs:
         raise SystemExit("no events: run `pinpoint events` first")
-    all_evs = [proptone.tag(sp, e) if e.fb is None else e for e in all_evs]  # events.json from before base tones
     if len(all_evs) < 2 and start is None:
         # validation: 1 event, unknown time -> 2.7 h search, wrong spot, 0.8 % margin
         raise SystemExit("only one flyover: need a second one or a known start time (--start)")

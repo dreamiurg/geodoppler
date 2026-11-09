@@ -14,7 +14,6 @@ import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ProcessPoolExecutor
-from functools import cache
 from importlib import resources
 from pathlib import Path
 
@@ -27,7 +26,6 @@ KT = 0.514444
 CONUS = (24.0, -125.0, 50.0, -66.0)  # lat0, lon0, lat1, lon1
 
 
-@cache
 def _types():
     return json.loads(resources.files("pinpoint.resources").joinpath("icao_aircraft_types.json").read_text())
 

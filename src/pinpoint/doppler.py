@@ -43,8 +43,6 @@ class Event:
     tc: float  # reception time of CPA, seconds into recording
     score: float
     harmonics: tuple = (1,)  # multiples of f0 visible (and scored)
-    fb: float | None = None  # propeller base tone (comb spacing), Hz: proptone.base_tone
-    fb_score: float | None = None  # its tooth-minus-gap contrast; low = unreliable
 
     def to_dict(self):
         return asdict(self)
