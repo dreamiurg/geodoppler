@@ -17,3 +17,24 @@ def test_silence_guard_ignores_passes_inside_an_events_sound_window():
         t, lat, lon, alt = synthetic_track(lat0, lon0, v=60.0, alt=300.0, offset=0.0, dur=300)
         df = pd.DataFrame({"icao": "x", "t": t + 10_000 + after, "lat": lat, "lon": lon, "alt_m": alt, "gs": 60.0})
         assert (len(silence_filter(hits, df, evs, pts, Tolerances())) == 1) == kept
+
+
+def test_doppler_scale_recovers_radial_velocity_scale():
+    """A track's Doppler line painted with its radial velocity scaled by k: doppler_scale finds k back."""
+    from pinpoint.audio import Spec
+    from pinpoint.doppler import C
+    from pinpoint.flyover import Track
+    from pinpoint.search import doppler_scale
+    lat0, lon0 = 40.0, -100.0
+    t, lat, lon, alt = synthetic_track(lat0, lon0, v=60.0, alt=800.0, offset=600.0)
+    tr = Track(t + 1000, lat, lon, alt)  # unix time = spectrogram seconds (start 0)
+    t_rec, ratio, _, tcpa, _ = tr.curve(lat0, lon0)
+    vr = C / ratio - C
+    st, sf = np.arange(0, 2000, 0.5), np.arange(20, 300, 0.5)
+    for k in (1.0, 1.1):
+        S = np.zeros((len(sf), len(st)), np.float32)
+        sel = np.abs(st - tcpa) < 90
+        f = 100 * C / (C + k * np.interp(st[sel], t_rec, vr))
+        S[np.rint((f - sf[0]) / 0.5).astype(int), np.flatnonzero(sel)] = 5.0
+        e = Event(tcpa - 90, tcpa + 90, 100.0, 60.0, 1000.0, tcpa, 1.0)
+        assert abs(doppler_scale(Spec(st, sf, S), tr, e, lat0, lon0, 0.0) - k) <= 0.011

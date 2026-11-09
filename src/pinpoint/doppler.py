@@ -12,7 +12,7 @@ from scipy.optimize import differential_evolution
 
 from .audio import Spec
 
-C = 343.0  # m/s; shortcut: fixed ~20 C air, no temperature/wind correction
+C = 343.0  # m/s; shortcut: fixed ~20 C air. Wind enters only as c + W.n (~W/c), not as airspeed
 
 
 def ideal_curve(t, f0, v, d, tc, c=C):

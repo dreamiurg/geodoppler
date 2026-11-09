@@ -262,10 +262,10 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     if extra:
         cands = search.verify_extra(sp, cands, extra, evs, df, search.Tolerances(), log=log, elev=elev)
         cands.to_parquet(run / "verified.parquet")
-    return report(run, cands, df, evs, date, open_map, extra)
+    return report(run, cands, df, evs, date, open_map, extra, sp, elev)
 
 
-def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
+def report(run, cands, df, evs, date, open_map=True, extra=(), sp=None, elev=None) -> dict:
     n = len(evs)
     best = cands.iloc[0]
     combo = [f"icao{i + 1}" for i in range(n)]
@@ -286,10 +286,18 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
     margin = None if runner is None else (best.score - runner.score) / runner.score
     # validation: correct answers had 18-50 % margins, wrong ones 0.04-8 %
     confidence = "unknown" if margin is None else "high" if margin >= 0.15 else "low"
+    scales = []
+    if sp is not None:  # experiments/wind: right answers' primary events need k 0.94-1.05; 13 of 15 wrong ones did not
+        e0 = 0.0 if elev is None else float(elev([best.lat], [best.lon])[0])
+        scales = [search.doppler_scale(sp, search._track(df, best[f"icao{i + 1}"], best.start + e.tc), e,
+                                       best.lat, best.lon, best.start, e0) for i, e in enumerate(evs)]
+        if any(abs(k - 1) > search.Tolerances().scale_ok for k in scales):
+            confidence = "low"
     result = {
         "lat": round(float(best.lat), 5), "lon": round(float(best.lon), 5), "score": round(float(best.score), 3),
         "runner_up_score": None if runner is None else round(float(runner.score), 3),
         "margin": None if margin is None else round(float(margin), 3), "confidence": confidence,
+        "doppler_scale": [round(k, 2) for k in scales],
         "recording_start_utc": f"{pd.to_datetime(best.start - off, unit='s'):%Y-%m-%d %H:%M:%S}",
         "analysed_from_s": off,
         "aircraft": [{"heard_at_s": round(tc + off, 1), "icao": icao, "type": types.get(icao, "")} for tc, icao in sorted(heard)],
@@ -305,6 +313,7 @@ def report(run, cands, df, evs, date, open_map=True, extra=()) -> dict:
         "Recording started": result["recording_start_utc"] + " UTC",
         "Aircraft heard": "<br>".join(html.escape(f"{a['heard_at_s']:.0f}s: {a['icao']} {a['type']}") for a in result["aircraft"]),
         "Events unexplained": ", ".join(f"{t:.0f}s" for t in result["events_unexplained"]) or "none",
+        "Doppler scale": ", ".join(f"{k:.2f}" for k in scales) + (" (outside 1 +- 0.08: confidence low)" if confidence == "low" and margin is not None and margin >= 0.15 else ""),
     }
     title = meta.get("title") or run.name
     path = mapview.render(cands, run / "map.html", title, info, tracks)

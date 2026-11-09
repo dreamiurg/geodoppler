@@ -29,15 +29,18 @@ DEG = np.pi / 180 * 6371000.0
 
 @dataclass
 class Tolerances:
-    speed: float = 30.0  # m/s; ADS-B ground speed vs Doppler airspeed (wind) + fit error
+    speed: float = 30.0  # m/s; ADS-B ground speed vs the event fit's v (fit error; Doppler follows ground speed)
     slant_rel: float = 0.45  # relative slant distance error of the curve fit
     offset_s: float = 10.0  # CPA-time offset error between events
     silence_rel: float = 0.6  # another pass closer than this x min(event slant) breaks silence
     shift_s: float = 6.0  # event-1 placement sweep for scoring
     lock_slack_s: float = 2.0  # later events: play around the geometry-locked placement
     f0_rel: float = 0.04  # f0 sweep around the fitted value
-    airspeed: tuple = (0.85, 1.15)  # radial-velocity scale sweep (wind along track)
+    # radial-velocity scale sweep. Not wind: Doppler follows ground speed, wind only shifts the effective sound
+    # speed (c + W.n, ~W/c). k absorbs sound speed (temperature) and geometry error
+    airspeed: tuple = (0.85, 1.15)
     airspeed_steps: int = 7
+    scale_ok: float = 0.08  # a primary event needing |k - 1| beyond this is not explained by its aircraft
 
 
 class Points:
@@ -228,7 +231,7 @@ def score_point(spec: Spec, tracks, events, lat, lon, tol: Tolerances, elev0=0.0
 
     Event 1 absorbs measurement error (placement shift, f0). Later events are placed by geometry
     alone, with only `lock_slack_s` of play. Every event may scale its radial velocity by
-    `airspeed` (wind: Doppler follows speed through the air, ADS-B reports ground speed)."""
+    `airspeed` (sound speed and geometry error; see Tolerances)."""
     rel = np.arange(-half, half + 1, spec.t[1] - spec.t[0])
     ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
     start, scores = None, []
@@ -245,6 +248,18 @@ def score_point(spec: Spec, tracks, events, lat, lon, tol: Tolerances, elev0=0.0
             start = tcpa - (e.tc + sh)
         scores.append(sc)
     return float(sum(scores)), scores, float(start)
+
+
+def doppler_scale(spec: Spec, track: Track, e: Event, lat, lon, start, elev0=0.0, ks=np.arange(0.80, 1.2501, 0.01)):
+    """Best radial-velocity scale k for one matched event at a fixed answer (start = unix time of t=0).
+    experiments/wind: every primary event of the correct runs needed k in 0.94-1.05."""
+    spec = spec.crop(e.tc - 150, e.tc + 150, 0, e.f0 * max(e.harmonics) * 2.5)  # all _sweep can touch
+    rel = np.arange(-70.0, 71.0, spec.t[1] - spec.t[0])
+    t_rec, ratio, _, tcpa, _ = track.curve(lat, lon, elev0)
+    vr = np.interp(tcpa + rel, t_rec, C / ratio - C)
+    f0s = e.f0 * (1 + np.linspace(-0.04, 0.04, 41))
+    best = [_sweep(spec, tcpa - start + rel, vr, np.arange(-2, 2.01, 0.5), np.array([k]), f0s, e.harmonics)[0] for k in ks]
+    return float(ks[int(np.argmax(best))])
 
 
 def _sweep(spec: Spec, t, vr, shifts, ks, f0s, harmonics):
