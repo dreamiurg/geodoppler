@@ -242,6 +242,9 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     df = df.astype({"icao": "category", "type": "category"})
     if days > 1:  # each day's parquet is already (icao, t)-sorted
         df = df.sort_values(["icao", "t"], kind="stable")
+    # validation: rotorcraft never made a detected event at a known spot, but medical helicopters won y-xpMDcnQvw
+    types = adsb._types()
+    df = df[~df["type"].isin([c for c in df["type"].cat.categories if adsb.is_rotorcraft(c, types)])]
     elev = Elevation(DATA)
     res = []
     with search.pool(sp, evs, elev) as ex:

@@ -36,6 +36,11 @@ def is_jet(type_code: str | None, types=None) -> bool:
     return d.endswith("J")
 
 
+def is_rotorcraft(type_code: str | None, types=None) -> bool:
+    """True only for known helicopters/gyrodynes (ICAO desc H*); unknown types are kept."""
+    return (types or _types()).get(type_code or "", {}).get("desc", "").startswith("H")
+
+
 def download_day(day: str, data_dir: Path) -> Path:
     """Download + extract adsb.lol globe_history for YYYY-MM-DD into data_dir/adsb/<day>/traces."""
     out = data_dir / "adsb" / day
