@@ -19,7 +19,8 @@ on decoy 5, ratio 1.10 over the 4 it finished (wrong, k-flagged).
   wrong ratios:   0.80 ... 0.99 (21 cases), 1.00, 1.01, 1.01, 1.03, 1.03, 1.10, 1.13, 1.22
   decoy rule (1.2, >= 3 events, k flag): correct 3 high / 1 low; wrong 0 high / 30 low.
   Kz69coKyH9Q is wrong at ratio 1.221 (start 243 s off), above the correct UMf6oAlorlk at 1.209; only the
-  k flag (1.13/1.25) keeps it low. The ratio by itself does NOT separate right from wrong on this set.
+  k flag (1.13/1.25) keeps it low. It is the same channel as wTRF12TtDsQ (JB and Cloie's Birds), and its spot
+  is 109 km from wTRF's correct answer: a wrong spot, not just a wrong time. The ratio by itself does NOT separate right from wrong on this set.
   7NzTIUwkPE8 (wrong-high in step 1) drops to low at 1.13.
   Cs4nYfpcC0E is correct at 0.93 (9 events, margin 0.7 %): low under both rules.
 

@@ -95,7 +95,7 @@ recording start time (acoustic path gives it to the second), aircraft heard, ass
 - Wide searches (150-300 km): `high` can be wrong (19-32 % margins seen before rotorcraft were dropped and the
   Doppler-scale check added; a 0.9 km position error also trips that check, so a right answer can read `low`). For livestream
   archives, check found `recording_start_utc` against `release_timestamp` after the run; right answers
-  matched within 2-33 s. Watch for looped "1 hour" uploads: identical events at a fixed offset.
+  matched within 33 s (some up to 16 s before the go-live time). Watch for looped "1 hour" uploads: identical events at a fixed offset.
 - ADS-B = adsb.lol community receivers: dense in the US/Europe, thin elsewhere; history from 2023 on.
 - Analyses the first 2 hours of audio (PINPOINT_MAX_MINUTES). Searching a 2x2 degree box takes ~4 min in a
   busy area; `conus` takes hours.

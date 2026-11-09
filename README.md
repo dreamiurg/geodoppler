@@ -86,7 +86,11 @@ answers). The wider 150-300 km searches in `demo.md` broke that: two `high` answ
 wrong, one of them matched medical helicopters. There, a found recording start that matches a livestream's
 real go-live time is what separates right from wrong. After dropping rotorcraft, widening the silence guard,
 sweeping every combination and adding the Doppler-scale check, none of 23 labeled recordings
-(`validation/eval.py`) gets a wrong `high`; the helicopter case is found at 150 km (0.9 km off, `low`). Airport plane-spotting streams fail: ground operations and landings are
+(`validation/eval.py`) gets a wrong `high`; the helicopter case is found at 150 km (0.9 km off, `low`).
+On 36 held-out livestreams nothing was tuned on (`experiments/heldout`), 4 were found; the margin rule
+said `high` 4 times and was wrong once (a 43 % margin), the `--decoys 5` rule said `high` 3 times, all right.
+The decoy ratio alone did not separate them (a wrong answer at 1.22, a right one at 1.21); the
+Doppler-scale check caught the wrong one. Only 4 positives: treat the 1.2 threshold as provisional. Airport plane-spotting streams fail: ground operations and landings are
 not straight constant-speed flyovers. Full table: `validation/results.md`.
 
 ## Limits
