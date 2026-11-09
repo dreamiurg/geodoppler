@@ -85,7 +85,11 @@ recording start time (acoustic path gives it to the second), aircraft heard, ass
 ## Limits
 
 - Needs the audio to carry aircraft sound: an unedited stretch (cuts break the time offsets) and a
-  non-jet flyover within ~8 km. Jets are filtered out (their tones do not show clean Doppler lines here).
+  non-jet flyover within ~8 km. Jets are filtered out. Jets low on approach DO make clean tones (seen under CVG, 107-144 m/s),
+  but too many look-alike tracks share the approach path; backyards under airline approaches fail.
+- Wide searches (150-300 km): `high` can be wrong (helicopters, 19-32 % margins seen). For livestream
+  archives, check found `recording_start_utc` against `release_timestamp` after the run; right answers
+  matched within 2-33 s. Watch for looped "1 hour" uploads: identical events at a fixed offset.
 - ADS-B = adsb.lol community receivers: dense in the US/Europe, thin elsewhere; history from 2023 on.
 - Analyses the first 2 hours of audio (PINPOINT_MAX_MINUTES). Searching a 2x2 degree box takes ~4 min in a
   busy area; `conus` takes hours.

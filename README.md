@@ -71,13 +71,16 @@ know when it is wrong".
 | 6 airport / beach webcams, 2 field recordings, 2 railcam days | 0 | no flyovers detected | | |
 | 6 webcam archives | | silent audio track | | |
 
-So far: every `high` answer was right and every wrong answer was flagged `low`. The
-sample is tiny (2 high answers). Airport plane-spotting streams fail: ground operations and landings are
+In this 100 km set every `high` answer was right and every wrong answer was flagged `low` (only 2 high
+answers). The wider 150-300 km searches in `demo.md` broke that: two `high` answers (19 % and 32 %) were
+wrong, one of them matched medical helicopters. There, a found recording start that matches a livestream's
+real go-live time is what separates right from wrong. Airport plane-spotting streams fail: ground operations and landings are
 not straight constant-speed flyovers. Full table: `validation/results.md`.
 
 ## Limits
 
 - Needs unedited audio with at least one non-jet flyover within ~8 km (two for an unknown time).
+  Jets low on approach do make clean Doppler tones, but they are excluded: too many look-alike tracks.
 - Coverage = adsb.lol receivers (dense in US/Europe), history from 2023.
 - Ground elevation comes from Copernicus GLO-90 (downloaded per 1° tile on first use).
 - One UTC day of tracks per search; a recording across midnight UTC needs `--days 2`.
