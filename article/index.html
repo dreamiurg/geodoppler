@@ -56,64 +56,121 @@ td.bad { color: var(--bad); font-weight: 600; }
 .verdict.mixed { color: var(--accent); }
 .note { border-left: 3px solid var(--accent); padding-left: 14px; color: var(--ink); }
 footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); padding-top: 16px; margin-top: 24px; }
+.nutshell { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; display: grid; gap: 10px; }
+.nutshell h2 { margin: 0; font-size: 1.35rem; }
+/* animations: SVG + small inline scripts; colours only from tokens */
+.anim svg text { font-size: 13px; }
+.anim .stroke-ink { stroke: var(--ink); } .anim .stroke-acc { stroke: var(--accent); } .anim .stroke-cool { stroke: var(--cool); }
+.anim .stroke-muted { stroke: var(--muted); } .anim .stroke-line { stroke: var(--line); } .anim .stroke-ok { stroke: var(--ok); } .anim .stroke-bad { stroke: var(--bad); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font: .78rem/1.3 var(--mono); color: var(--muted); }
+.controls button { font: 600 .74rem/1 var(--mono); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+.controls button:hover { border-color: var(--accent); }
+.controls button:focus-visible, .controls input:focus-visible, .steps button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.controls label { display: inline-flex; gap: 8px; align-items: center; }
+.controls input[type=range] { width: 130px; accent-color: var(--accent); }
+.controls output { color: var(--ink); font-variant-numeric: tabular-nums; min-width: 4.5em; }
+.readout { font: .8rem/1.5 var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; max-width: none; min-height: 1.5em; }
+.steps { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.steps button { font: 600 .7rem/1 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px; cursor: pointer; }
+.steps button[aria-current="step"] { color: var(--ink); background: var(--accent-soft); border-color: var(--accent); }
+.pp-dot, .pp-trk, .pp-fade { transition: fill .5s, stroke .5s, opacity .5s; }
+@media (prefers-reduced-motion: reduce) { .pp-dot, .pp-trk, .pp-fade { transition: none; } }
 @media (max-width: 480px) { body { font-size: 17px; } }
 </style>
 
 <article>
-  <span class="kicker">Side project · Nov 2026</span>
+  <span class="kicker">Side project</span>
   <h1>I geolocated backyard bird cams by listening for small planes</h1>
-  <p class="byline">Dmytro Gaivoronsky · built with Claude Code: one night to get it working, then two days of experiments, Nov 7–9, 2026</p>
+  <p class="byline">Dmytro Gaivoronsky</p>
 
-  <p class="lede">A Cessna flying past a microphone leaves a falling tone in the recording. With two or three of those, and public flight-tracking history, you can work out where the microphone was and when it started recording. I had Claude Code build a tool that does this, pointed it at random backyard livestreams on YouTube, and it found one bird feeder in Northeast Ohio on three separate days, each time within half a kilometer of the same spot.</p>
+  <p class="lede">A few days ago I came across a fascinating video by colsto, <a href="https://youtu.be/UytYrhYLOKI">I discovered a sound that leaks your exact location</a>. It works out where a recording was made from the sound of small planes flying past the microphone. It got me curious, so I sat down with Claude and built something like it as an open-source project.</p>
+  <p>This post is the first of two about what I built, what I found along the way, and the experiments and ideas I tried. Some worked, some did not.</p>
 
-  <p>It also rated two other answers high and put them in the wrong state. The first half of this post is how it got built and where it broke. The second half is two days of experiments that followed: what stuck, what didn't, a test on 36 recordings it had never seen, and a list of things I'd still like to try. The code is <a href="https://github.com/dreamiurg/pinpoint">open source</a>.</p>
+  <section class="nutshell" aria-labelledby="nutshell-h">
+    <h2 id="nutshell-h">In a nutshell</h2>
+    <ul>
+      <li>A propeller plane flying past a microphone leaves a falling tone in the recording. The shape of that tone gives the plane's speed, how close it passed, and the second it passed.</li>
+      <li>Planes broadcast their position, and hobbyists keep the history. geodoppler is a Python CLI that searches a grid of possible spots for the one where real planes would have made the tones in the audio. It gives back a pin on a map and the second the recording started.</li>
+      <li>Pointed at random backyard livestreams on YouTube, it found one bird feeder in Northeast Ohio on three separate days, each time within half a kilometer of the same spot. It also rated two other answers high and put them in the wrong state.</li>
+      <li>On 36 livestreams it had never seen, it found 6. The 2 answers it called high were both right, but most recordings don't have the planes it needs.</li>
+    </ul>
+  </section>
 
   <h2>The video that started it</h2>
-  <p>colsto posted <a href="https://youtu.be/UytYrhYLOKI">I discovered a sound that leaks your exact location</a>. The idea: propeller planes produce a tone from their blades. As a plane passes, the Doppler effect bends that tone down. Most of the time you can't hear it over everything else, but it shows up clearly in a <a href="https://en.wikipedia.org/wiki/Spectrogram">spectrogram</a>. Planes broadcast their position over <a href="https://en.wikipedia.org/wiki/Automatic_Dependent_Surveillance%E2%80%93Broadcast">ADS-B</a>, and hobbyists record those broadcasts. So the sound in a video can be matched against where real planes actually were.</p>
-  <p>On the evening of Nov 7 I asked Claude Code to build the whole thing overnight: give it a YouTube link, get a pin on a map. No questions, no check-ins. By morning it had a working pipeline, a test suite, and 22 test videos with known locations.</p>
+  <p>The idea from colsto's video: propeller planes produce a tone from their blades. As a plane passes, the Doppler effect bends that tone down. Most of the time you can't hear it over everything else, but it shows up clearly in a <a href="https://en.wikipedia.org/wiki/Spectrogram">spectrogram</a>. Planes broadcast their position over <a href="https://en.wikipedia.org/wiki/Automatic_Dependent_Surveillance%E2%80%93Broadcast">ADS-B</a>, and hobbyists record those broadcasts. So the sound in a video can be matched against where real planes actually were.</p>
+  <p>The goal was simple: give it a YouTube link, get a pin on a map. The first version came with a working pipeline, a test suite, and 22 test videos with known locations.</p>
 
   <h2>What a passing plane looks like</h2>
-  <p>Here's 10 minutes of a bird-feeder livestream from Ohio. Time goes left to right, pitch goes up. The vertical streaks are bird calls and wind. Around the 2,200-second mark three parallel lines bend down together. That's one plane: the base tone of the propeller plus two harmonics.</p>
+  <p>Here's 10 minutes of a <a href="https://www.youtube.com/watch?v=U1bQZeogcsU">bird-feeder livestream from Ohio</a>. Time goes left to right, pitch goes up. The vertical streaks are bird calls and wind. Around the 2,200-second mark three parallel lines bend down together. That's one plane: the base tone of the propeller plus two harmonics.</p>
   <figure>
     <img src="img/ohio-overview.png" alt="Spectrogram from 1800 to 2400 seconds, 20 to 500 Hz. Noisy vertical streaks throughout; near 2190 to 2220 seconds three parallel curves fall from about 420, 300 and 210 Hz to 330, 230 and 150 Hz.">
     <figcaption>Chickadee's LIVE Bird Feeder, Northeast Ohio, Sep 30 2026. 20–500 Hz, 1,800–2,400 s into the analyzed slice.</figcaption>
   </figure>
   <p>The shape of that curve carries most of the information:</p>
-  <figure class="panel">
-    <svg viewBox="0 0 700 300" role="img" aria-label="Diagram: frequency against time for a flyover. High plateau before, low plateau after, a steep drop at the closest approach. The gap between plateaus gives speed, the steepness gives distance, the midpoint gives the time.">
-      <line x1="60" y1="20" x2="60" y2="250" stroke="var(--line)"/>
-      <line x1="60" y1="250" x2="680" y2="250" stroke="var(--line)"/>
-      <text x="10" y="30">pitch</text><text x="630" y="270">time</text>
-      <path d="M60 70 C 280 70, 320 72, 360 140 S 430 210, 680 212" fill="none" stroke="var(--accent)" stroke-width="3"/>
-      <path d="M60 110 C 280 110, 330 112, 360 165 S 470 238, 680 238" fill="none" stroke="var(--cool)" stroke-width="2" stroke-dasharray="6 5"/>
-      <line x1="360" y1="20" x2="360" y2="250" stroke="var(--muted)" stroke-dasharray="3 4"/>
-      <text class="ink" x="368" y="36">closest approach: exact second</text>
-      <line x1="600" y1="70" x2="600" y2="212" stroke="var(--ink)"/>
-      <line x1="594" y1="70" x2="606" y2="70" stroke="var(--ink)"/><line x1="594" y1="212" x2="606" y2="212" stroke="var(--ink)"/>
-      <text class="ink" x="470" y="66">high → low gap: speed</text>
-      <text class="acc" x="96" y="60">close pass: sharp drop</text>
-      <text x="96" y="100" fill="var(--cool)" style="fill:var(--cool)">far pass: gentle drop</text>
+  <figure class="panel anim" id="dop">
+    <svg id="dop-geo" viewBox="0 0 480 200" role="img" aria-label="Top view: a plane flies a straight line past a microphone. A ring shows the sound now reaching the microphone and the spot on the path where the plane was when it made that sound.">
+      <line class="stroke-line" x1="20" y1="182" x2="460" y2="182"/>
+      <line id="dop-track" class="stroke-muted" x1="0" x2="480" y1="146" y2="146" stroke-dasharray="4 5"/>
+      <line id="dop-miss" class="stroke-muted" x1="240" x2="240" y1="146" y2="182" stroke-dasharray="2 3"/>
+      <text id="dop-miss-t" x="246" y="166">1.8 km</text>
+      <circle id="dop-ring" class="stroke-acc" cx="0" cy="0" r="0" fill="none" stroke-width="1.5" opacity=".55"/>
+      <line id="dop-ray" class="stroke-acc" x1="0" y1="0" x2="240" y2="182" stroke-dasharray="3 3"/>
+      <circle id="dop-emit" cx="0" cy="0" r="3.5" style="fill:var(--accent)"/>
+      <path id="dop-plane" d="M9 0 L-7 -3 L-9 0 L-7 3 Z M1 -9 L4 -9 L2 9 L-1 9 Z" style="fill:var(--ink)"/>
+      <circle cx="240" cy="182" r="5" style="fill:var(--ink)"/>
+      <text class="ink" x="250" y="196">mic</text>
+      <line class="stroke-ink" x1="20" y1="194" x2="40" y2="194" stroke-width="2"/><text x="46" y="198">1 km</text>
+      <text x="20" y="16">top view</text>
     </svg>
-    <figcaption>The pitch before and after gives the plane's speed. How sharply it drops gives the closest distance. The midpoint gives the second it passed, after allowing for the time the sound takes to arrive.</figcaption>
+    <svg id="dop-plot" viewBox="0 0 480 226" role="img" aria-label="Pitch heard at the microphone against time. It falls from a high plateau to a low one, crossing the plane's own tone at the moment the closest-approach sound arrives. A close pass drops sharply, a far pass gently.">
+      <g class="stroke-line">
+        <line x1="50" x2="470" y1="172" y2="172"/><line x1="50" x2="470" y1="125" y2="125"/><line x1="50" x2="470" y1="78" y2="78"/><line x1="50" x2="470" y1="32" y2="32"/>
+        <line x1="50" x2="50" y1="20" y2="195"/><line x1="50" x2="470" y1="195" y2="195"/>
+      </g>
+      <text x="44" y="176" text-anchor="end">80</text><text x="44" y="129" text-anchor="end">100</text><text x="44" y="82" text-anchor="end">120</text><text x="44" y="36" text-anchor="end">140</text>
+      <text x="4" y="14">Hz</text>
+      <text x="66" y="212" text-anchor="middle">−120</text><text x="163" y="212" text-anchor="middle">−60</text><text x="260" y="212" text-anchor="middle">0</text><text x="357" y="212" text-anchor="middle">60</text><text x="454" y="212" text-anchor="middle">120</text><text x="470" y="224" text-anchor="end">s after</text>
+      <line class="stroke-muted" x1="260" x2="260" y1="20" y2="195" stroke-dasharray="3 4"/>
+      <text class="ink" x="266" y="30">closest pass heard</text>
+      <text x="56" y="141">plane's own tone, 100 Hz</text>
+      <path id="dop-ghost" class="stroke-muted" d="" fill="none" stroke-width="1.5" stroke-dasharray="5 4" opacity=".7"/>
+      <path id="dop-curve" class="stroke-acc" d="" fill="none" stroke-width="3" stroke-linejoin="round"/>
+      <circle id="dop-dot" cx="0" cy="0" r="5" style="fill:var(--accent)"/>
+    </svg>
+    <div class="controls">
+      <button type="button" id="dop-play">Pause</button>
+      <button type="button" id="dop-replay">Replay</button>
+      <label for="dop-d">Closest distance <input type="range" id="dop-d" min="300" max="8000" step="100" value="1800"></label><output id="dop-d-out" for="dop-d">1.8 km</output>
+      <label for="dop-v">Speed <input type="range" id="dop-v" min="50" max="90" step="1" value="57"></label><output id="dop-v-out" for="dop-v">57 m/s</output>
+      <button type="button" id="dop-close">Close pass, 0.5 km</button>
+      <button type="button" id="dop-far">Far pass, 6 km</button>
+    </div>
+    <p class="readout" id="dop-read"></p>
+    <figcaption>The pitch before and after gives the plane's speed. How sharply it drops gives the closest distance. The midpoint gives the second it passed, after allowing for the time the sound takes to arrive. Drawn with the same formula geodoppler fits (<code>doppler.ideal_curve</code>, sound at 343 m/s); the dashed curve is your previous setting. Time runs about 30× faster than real.</figcaption>
   </figure>
 
   <h2>From curves to a spot on the map</h2>
   <p>One curve is not enough. A Cessna at 1.8 km and 57 m/s could be almost anywhere a Cessna was flying. Two curves are better, because the gap between them is fixed. If the first plane passed at 2,200 s and the second at 6,282 s, the answer must be a place where two real planes passed exactly 4,082 seconds apart, at those distances and speeds.</p>
-  <figure class="panel">
-    <svg viewBox="0 0 700 250" role="img" aria-label="Pipeline: audio, find curves, flight history, candidate spots, score, answer">
-      <g font-family="var(--mono)">
-        <rect x="10" y="30" width="120" height="70" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/><text class="ink" x="22" y="58">YouTube audio</text><text x="22" y="80">2 h daytime slice</text>
-        <rect x="160" y="30" width="120" height="70" rx="6" fill="var(--accent-soft)" stroke="var(--accent)"/><text class="ink" x="172" y="58">Find curves</text><text x="172" y="80">speed, distance, second</text>
-        <rect x="160" y="150" width="120" height="70" rx="6" fill="var(--surface)" stroke="var(--cool)"/><text class="ink" x="172" y="178">ADS-B history</text><text x="172" y="200">adsb.lol, 1 day</text>
-        <rect x="310" y="90" width="120" height="70" rx="6" fill="var(--surface)" stroke="var(--line)"/><text class="ink" x="322" y="118">Candidate grid</text><text x="322" y="140">200 m points</text>
-        <rect x="460" y="90" width="110" height="70" rx="6" fill="var(--surface)" stroke="var(--line)"/><text class="ink" x="472" y="118">Score</text><text x="472" y="140">redraw each curve</text>
-        <rect x="595" y="90" width="95" height="70" rx="6" fill="var(--accent)" /><text x="606" y="118" style="fill:var(--bg)">Pin + start</text><text x="606" y="140" style="fill:var(--bg)">time to 1 s</text>
-      </g>
-      <g stroke="var(--muted)" fill="none" stroke-width="1.5">
-        <path d="M130 65 H160"/><path d="M280 65 H295 V115 H310"/><path d="M280 185 H295 V135 H310"/><path d="M430 125 H460"/><path d="M570 125 H595"/>
-      </g>
-    </svg>
-    <figcaption>For every candidate spot, the tool takes the real tracks of the planes that could have made each curve, draws the exact curve they would produce there, and measures how well it lies on the spectrogram.</figcaption>
+  <figure class="panel anim" id="pp">
+    <div class="pair">
+      <svg id="pp-spec" viewBox="0 0 340 230" role="img" aria-label="Schematic spectrogram with three falling flyover curves, numbered 1 to 3, each with its fitted distance and speed."></svg>
+      <svg id="pp-map" viewBox="0 0 340 230" role="img" aria-label="Schematic map: a grid of candidate spots and the tracks of four planes. Step by step the grid narrows to two clusters, an extra flyover picks one, and a pin lands there."></svg>
+    </div>
+    <ol class="steps" id="pp-steps">
+      <li><button type="button">Events</button></li>
+      <li><button type="button">Candidates</button></li>
+      <li><button type="button">Offset filter</button></li>
+      <li><button type="button">Silence filter</button></li>
+      <li><button type="button">Scoring</button></li>
+      <li><button type="button">Verification</button></li>
+      <li><button type="button">Result</button></li>
+    </ol>
+    <p class="readout" id="pp-say" aria-live="polite"></p>
+    <div class="controls">
+      <button type="button" id="pp-play">Pause</button>
+      <button type="button" id="pp-replay">Replay</button>
+    </div>
+    <figcaption>Schematic: the curves, tracks and grid are made up to show the steps, not taken from a real run, and the map is not to scale. The step names match the stages in the code (<code>search.locate</code>, <code>verify_extra</code>). For every candidate spot, the tool takes the real tracks of the planes that could have made each curve, draws the exact curve they would produce there, and measures how well it lies on the spectrogram.</figcaption>
   </figure>
   <p>The pieces, roughly in the order they got built:</p>
   <ul>
@@ -124,13 +181,13 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   </ul>
   <p>The output is a map, a score, and a recording start time to the second. The start time later became the main check on whether an answer is right.</p>
 
-  <h2>The first morning: 22 test videos, 2 good answers</h2>
-  <p>Claude built a validation set of public YouTube recordings with a known place and day: beach cams, airport plane-spotting streams, nature soundscapes, railroad cams. Each one was searched within 100 km of its true location.</p>
+  <h2>22 test videos, 2 good answers</h2>
+  <p>The first test was a validation set I put together from public YouTube recordings with a known place and day: beach cams, airport plane-spotting streams, nature soundscapes, railroad cams. Each one was searched within 100 km of its true location.</p>
   <p>Most had nothing to find. Six webcam archives had no audio track at all. Airport streams were full of planes, but taxiing and landing aircraft don't make clean passing curves. The two good answers were colsto's own recording and a <a href="https://www.youtube.com/watch?v=u8qudttB8PI">railroad camera in Huron, Ohio</a>, located 0.21 km from the real camera with a start time 33 seconds off. Searching that one again across a 300 km circle still landed 0.26 km away.</p>
-  <p>Claude added a rule from that set: compare the best answer with the best answer using a different set of planes. If it wins by 15% or more, call it "high". At that point every high answer was right and every wrong one was low. With only two high answers, that rule was a guess. Wider searches later that day broke it, and two days later it was gone.</p>
+  <p>That set gave the first confidence rule: compare the best answer with the best answer using a different set of planes. If it wins by 15% or more, call it "high". At that point every high answer was right and every wrong one was low. With only two high answers, that rule was a guess. Wider searches broke it, and it was later replaced.</p>
 
   <h2>Sound only</h2>
-  <p>The first video I tried for real was my own hiking Short. Claude pinned it from the title and the frames, which isn't the method I wanted to test. From then on the rule was sound only: the tool reads the duration, the date and the audio, and nothing that says where it was filmed.</p>
+  <p>The first video I tried for real was my own hiking Short. The answer came from the title and the frames, which isn't the method I wanted to test. From then on the rule was sound only: the tool reads the duration, the date and the audio, and nothing that says where it was filmed.</p>
   <p>The next three videos I tried came back with "can't locate from sound": one had no planes, one was from 2022 (before the flight history starts), and one was a person talking for eleven minutes. The method needs something specific: long, unedited, outdoor audio with no talking, where a small plane happens to pass within about 8 km.</p>
 
   <h2>Hunting for home videos</h2>
@@ -145,7 +202,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
         <rect x="10" y="186" width="70" height="34" rx="4" fill="var(--accent)"/><text x="20" y="208" style="fill:var(--bg)">4</text><text class="ink" x="92" y="208">passed both checks</text>
       </g>
     </svg>
-    <figcaption>Nov 8, 2026. "Searched blind" means a circle of 120–300 km around the stated region, with nothing else from the description.</figcaption>
+    <figcaption>"Searched blind" means a circle of 120–300 km around the stated region, with nothing else from the description.</figcaption>
   </figure>
   <p>Two checks decide whether an answer is right. The place has to be inside the region the uploader names. The start time the tool computes has to match YouTube's go-live time, which the tool never sees. A wrong spot can't hit the start time to within seconds by accident.</p>
 
@@ -175,7 +232,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
       <circle cx="175.5" cy="56.75" r="7" fill="none" stroke="var(--accent)" stroke-width="2"/><text class="ink" x="188" y="61">Oct 19 (local check)</text>
       <line x1="80" y1="318" x2="142.5" y2="318" stroke="var(--ink)" stroke-width="2"/><text x="150" y="322">250 m</text><text x="420" y="322">N ↑</text>
     </svg>
-    <figcaption>Filled dots: blind 150 km searches. Hollow: Oct 19, at first found only by a search within 15 km of the Sep 30 answer, start time 6 s off. After round two the 150 km search finds it too.</figcaption>
+    <figcaption>Filled dots: blind 150 km searches. Hollow: Oct 19, at first found only by a search within 15 km of the Sep 30 answer, start time 6 s off. After the fixes below the 150 km search finds it too.</figcaption>
   </figure>
   <figure>
     <div class="pair">
@@ -188,8 +245,8 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   <h2>Two wrong answers rated high</h2>
   <p>Two answers came back "high" and were wrong.</p>
   <ul>
-    <li>The same Ohio feeder on Oct 19 landed near Pittsburgh with a 19% margin. It had matched three medical helicopters (an EC135, an AW139, another EC135). Its start time was 20:03. The stream actually went live at 13:51.</li>
-    <li>A weather cam in Green Lake, Wisconsin landed in northern Illinois, 168 km away, with a 32% margin. Start time off by an hour and a half.</li>
+    <li>The <a href="https://www.youtube.com/watch?v=y-xpMDcnQvw">same Ohio feeder on Oct 19</a> landed near Pittsburgh with a 19% margin. It had matched three medical helicopters (an EC135, an AW139, another EC135). Its start time was 20:03. The stream actually went live at 13:51.</li>
+    <li>A <a href="https://www.youtube.com/watch?v=0a7boP2vrtY">weather cam in Green Lake, Wisconsin</a> landed in northern Illinois, 168 km away, with a 32% margin. Start time off by an hour and a half.</li>
   </ul>
   <p>Of the five blind "high" answers, three passed the clock check and two failed it. The 15% rule held at 100 km and broke at 150–300 km. A bigger area has more planes, so a coincidental match is more likely to score well. For Oct 19 I had it search again only within 15 km of the Sep 30 answer, and it found a spot 0.96 km away, with three different planes and a start time 6 seconds from the real one. The wide search had scored the helicopter match higher. Why it did took a separate experiment to find, below.</p>
 
@@ -199,7 +256,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
     <li>Airport plane-spotting streams have lots of planes but no clean curves. Ground roll and landing flare aren't straight constant-speed passes.</li>
     <li>Four days of a Lake of the Ozarks dock cam produced zero flyovers. Boats make Doppler curves too, which doesn't help.</li>
     <li><b>Jets.</b> The tool started from the assumption that jets make broadband roar with nothing to fit. Under the approach into CVG, the Northern Kentucky feeder heard clean curves at 107–144 m/s. They were jets on approach. The tool skips jets because dozens fly the same path, and any one of them looks like the others.</li>
-    <li><b>A "1 hour" backyard recording from outside Boston.</b> 71 views, real home footage, planes mentioned in the description. It was a 30-minute recording played twice. Identical curves 1,794 seconds apart can't match real planes, which can't fly the same pass twice. The date was also unknown, so even the de-looped half didn't match.</li>
+    <li><b>A <a href="https://www.youtube.com/watch?v=GjumQJU_KBw">"1 hour" backyard recording from outside Boston</a>.</b> 71 views, real home footage, planes mentioned in the description. It was a 30-minute recording played twice. Identical curves 1,794 seconds apart can't match real planes, which can't fly the same pass twice. The date was also unknown, so even the de-looped half didn't match.</li>
     <li>Several livestream archives were mostly overnight, and small planes rarely fly at 3 am.</li>
   </ul>
   <figure>
@@ -211,13 +268,13 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   </figure>
   <figure>
     <img src="img/kentucky-jet.png" alt="Clean falling tone from 160 to 75 Hz over two minutes, fitted at 139 m/s and 8 km">
-    <figcaption>Northern Kentucky, Sep 8: fitted at 139 m/s and 8 km. Too fast for a Cessna. A jet on approach.</figcaption>
+    <figcaption><a href="https://www.youtube.com/watch?v=OiJk-_uPQVM">Northern Kentucky, Sep 8</a>: fitted at 139 m/s and 8 km. Too fast for a Cessna. A jet on approach.</figcaption>
   </figure>
 
-  <h2 class="part">Part two · Nov 8–9</h2>
+  <h2 class="part">Making it better</h2>
 
   <h2>Going wide</h2>
-  <p>After the demo I gave Claude a looser brief: try everything that might make this better, in every direction, run as many agents in parallel as it likes, and act as the coordinator. Over the next two days it ran about a dozen experiments. Each one was a sub-agent with its own folder and a written report, and nothing reached the main code until the coordinator had measured it on the same labeled recordings.</p>
+  <p>Once it worked, the brief got looser: try everything that might make this better, in every direction, with many experiments running in parallel. That came to about a dozen experiments. Each one had its own folder and a written report, and nothing reached the main code until it was measured on the same labeled recordings.</p>
   <p>All of it ran on one laptop with an external SSD for the flight data. Every search took a shared CPU lock, so experiments queued behind each other instead of fighting for cores and skewing each other's timings.</p>
 
   <h2>What made it in</h2>
@@ -242,7 +299,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
       <tr><td>Narrower speed sweep, ±5%</td><td><span class="verdict no">Dropped</span></td><td>Broke the Oct 19 recovery. A spot 0.9 km off needs the planes 16% faster, so a tight sweep throws out answers that are close but not exact.</td></tr>
       <tr><td>Region from bird species (BirdNET)</td><td><span class="verdict no">No</span></td><td>Best guess a median 628 km from the truth. Feeder birds are the same everywhere east of the Plains. It does get the season right to about a week, which could help when the date is unknown.</td></tr>
       <tr><td>Temperature from cricket song</td><td><span class="verdict mixed">Works, doesn't help</span></td><td>The pitch of the dusk chorus moves about 94 Hz per °C and reads temperature to about 1 °C on good evenings. But the evening temperature curve is the same across half the Midwest, so it doesn't narrow the place.</td></tr>
-      <tr><td>Date from mains hum (ENF)</td><td><span class="verdict mixed">Blocked</span></td><td>23 of 78 recordings carry 60 Hz grid hum, and two feeder streams in North Carolina and Georgia line up to 15 s by hum alone. Dating a single recording needs a log of grid frequency, and there's no free one for 2026. I've asked the FNET/GridEye team at UT Knoxville for a few days of data.</td></tr>
+      <tr><td>Date from mains hum (ENF)</td><td><span class="verdict mixed">Blocked</span></td><td>23 of 78 recordings carry 60 Hz grid hum, and two feeder streams in North Carolina and Georgia line up to 15 s by hum alone. Dating a single recording needs a log of grid frequency, and there's no free one for 2026. I asked the FNET/GridEye team at UT Knoxville, and they sent a first day of data. It isn't tested yet.</td></tr>
       <tr><td>"Sky Shazam": an index of every small-plane pass</td><td><span class="verdict mixed">Regional only</span></td><td>Over a 600 km box and 24 days, recordings with 4+ flyovers had the true day and spot in the top 5 three times out of four, with no date given. For the whole US over 1,000 days the index would be about 230 GB and a query about 6 hours. It also picked Oshkosh on the AirVenture arrival day for one recording, because dense traffic wins votes.</td></tr>
     </tbody>
   </table></div>
@@ -252,8 +309,8 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   <p>So the tool now asks the wrong days directly. With <code>--decoys 5</code> it searches 5 other days of flight data with the same flyovers. The answer is high only when today's best score is at least 1.2× the best score from any wrong day, there are at least 3 flyovers, and the Doppler-scale check passes. With only two flyovers there's nothing left over to check the match against, so two-flyover answers are always low. The cost is a search about 6× longer.</p>
 
   <h2>The reality check: 36 recordings it had never seen</h2>
-  <p>Everything so far was tuned on recordings I'd already looked at. So Claude collected 39 new 2026 livestream archives, kept the 36 on days whose flight data was already downloaded, and ran the tool on them unchanged. The only truth used was YouTube's go-live time.</p>
-  <p>4 of 36 came out right. 30 were wrong and 2 got no answer.</p>
+  <p>Everything so far was tuned on recordings I'd already looked at. So I took 39 new 2026 livestream archives, kept the 36 on days whose flight data was already downloaded, and ran the tool on them unchanged. The only truth used was YouTube's go-live time.</p>
+  <p>The first run got 4 of 36 right. 30 were wrong and 2 got no answer. Going through the misses one by one turned up two bugs. The join that pairs up candidates ran out of memory on one big search near Orlando, and verifying extra flyovers clipped each plane's track to a small box, which dropped fast or sparse passes. With both fixed, 6 of 36 came out right, 29 wrong and 1 got no answer. One answer that had been right by a 0.7% margin turned wrong.</p>
   <figure class="panel">
     <svg viewBox="0 0 700 260" role="img" aria-label="Decoy ratio for 34 answered recordings. Wrong answers, red, cluster between 0.80 and 1.03, with three at 1.10, 1.13 and 1.22. Correct answers, green, are at 0.93, 1.21, 1.28 and 2.23. The high threshold is at 1.2.">
       <line x1="60" y1="230" x2="640" y2="230" stroke="var(--line)"/>
@@ -298,31 +355,32 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
       <circle cx="537" cy="200" r="7" fill="var(--ok)"/>
       <circle cx="615" cy="200" r="7" fill="var(--ok)"/>
     </svg>
-    <figcaption>Best score on the real day divided by the best score on 5 wrong days, for the 34 recordings that got an answer. Hollow: wrong, and caught by the Doppler-scale check. The axis breaks between 1.35 and 2.2.</figcaption>
+    <figcaption>First run, before the two fixes. Best score on the real day divided by the best score on 5 wrong days, for the 34 recordings that got an answer. Hollow: wrong, and caught by the Doppler-scale check. The axis breaks between 1.35 and 2.2.</figcaption>
   </figure>
-  <p>Under the new rule 3 answers came back high, and all three were right. None of the 30 wrong ones did. The old margin rule had called one wrong answer high, with a 43% margin and a start time 2.9 hours off. The ratio put it at 1.13. The one wrong answer that did clear 1.2 needed its planes 13–25% off their real speed, and the Doppler-scale check caught it. Neither check is enough on its own.</p>
-  <p>Four correct answers is a tiny sample, so 1.2 is a provisional threshold. The bigger number is the 4. When the tool says high now, it has been right every time, but it finds the place in about one recording in nine. That's the problem to work on next.</p>
+  <p>In the first run the new rule called 3 answers high, and all three were right. None of the 30 wrong ones got high. The old margin rule had called one wrong answer high, with a 43% margin and a start time 2.9 hours off. The ratio put it at 1.13. The one wrong answer that did clear 1.2 needed its planes 13–25% off their real speed, and the Doppler-scale check caught it. In that run neither check was enough on its own. That recording turned out right after the verification fix.</p>
+  <p>After the fixes, 2 of the 6 correct answers are high and none of the wrong ones are. Correct answers have ratios of 0.87, 1.01, 1.18, 1.19, 1.29 and 2.25, and the highest wrong one is 1.12. One correct answer slipped from 1.21 to 1.19, just under the line. The old margin rule still calls that 43% answer high.</p>
+  <p>Six correct answers is still a tiny sample, and 1.2 wasn't retuned after the fixes, so it's a provisional threshold. The bigger number is the 6. When the tool says high now, it has been right every time, but it finds the place in about one recording in six. That's the problem to work on next.</p>
 
   <h2>Gotchas</h2>
   <ul>
     <li><b>Doppler follows ground speed.</b> The first version said the ±15% speed stretch was for wind, and so did the first draft of this post. The stretch actually covers fit error and position error: a spot 0.9 km off needs the planes 16% faster to match.</li>
     <li><b>A margin isn't a confidence.</b> On the wrong day it still says "high" 17% of the time. Only a comparison with wrong days tells you how lucky a score could be.</li>
-    <li><b>The truth isn't exact.</b> YouTube's go-live time is when the stream went public. Correct answers came out 29 s after it and 16 s before it, so "right" means within 60 s.</li>
+    <li><b>The truth isn't exact.</b> YouTube's go-live time is when the stream went public. Correct answers came out up to 29 s after it and 15 s before it, so "right" means within 60 s.</li>
     <li><b>Filters drop the right answer without a word.</b> Oct 19 failed because a Cessna passed 1.5 km from the feeder 31 s after another flyover, and the silence filter (a plane that close must leave a curve) used a 30 s window. Then a per-tile top-300 cut, scored before the speed sweep, dropped the true pair at rank 346. Neither step logged what it threw away.</li>
     <li><b>The 200 m grid matters.</b> Of about 290 grid points both true planes passed, only 1–3 matched the 10 s timing window, and which ones depended on where the grid started.</li>
     <li><b>The fitted pitch is the brightest harmonic.</b> On 20 correct matches it locked onto 1×, 2×, 3× or 4× the base tone. Pitch alone says little about the plane.</li>
     <li><b>Most "backyard ambience" on YouTube isn't real.</b> AI loops, and real recordings played twice to fill an hour.</li>
     <li><b>Decoys need disk.</b> Each day of flight data is a 4 GB download that shrinks to about 0.6 GB, and the confidence rule needs 5 other days on hand.</li>
-    <li><b>Parallel agents share one machine.</b> An experiment script without an <code>if __name__ == "__main__"</code> guard hung for 75 minutes on a multiprocessing spawn while holding the CPU lock, and every other experiment waited. Two searches near Orlando still crash after 24.7 million candidate points.</li>
+    <li><b>Parallel agents share one machine.</b> An experiment script without an <code>if __name__ == "__main__"</code> guard hung for 75 minutes on a multiprocessing spawn while holding the CPU lock, and every other experiment waited. A search near Orlando ran out of memory at 24.7 million candidates, until the join that pairs them ran in blocks.</li>
   </ul>
 
   <h2>When it works</h2>
-  <p>It works, under narrow conditions. You need a long outdoor recording with no editing, a day, a rough region, and luck with traffic: small planes passing within a few kilometers while the mic is on. Most YouTube videos don't qualify. Out of 36 fresh livestreams, 4 gave the right answer.</p>
+  <p>It works, under narrow conditions. You need a long outdoor recording with no editing, a day, a rough region, and luck with traffic: small planes passing within a few kilometers while the mic is on. Most YouTube videos don't qualify. Out of 36 fresh livestreams, 6 gave the right answer.</p>
   <p>When it does work, it's very specific. A bird feeder with 183 views, described only as "Northeast Ohio", resolves to a few hundred meters and the second the stream started. The uploader gave away nothing beyond the region. The location came from a Cessna that happened to fly by.</p>
 
   <h2>What I'd try next</h2>
   <ul>
-    <li><b>Recall.</b> Go through the 30 misses one by one, rerun each with the known start time, and sort them: no real planes in the audio, planes missing from ADS-B, a filter dropping them, or the right answer losing to a coincidence. Then fix the biggest bucket. This is in progress.</li>
+    <li><b>Recall.</b> The first pass is done: I reran every miss with the known start time and sorted them. 3 were looped audio, 5 had a fitted speed no small plane in ADS-B matched, and in 12 a pair of planes fit the real start time but ranked no better than chance. It found the two bugs above, and the rest is mostly the method, not a bug. That rest is what to work on.</li>
     <li><b>Negative evidence.</b> Penalize a spot where a loud plane passed close by and the audio heard nothing. Aimed at busy places like Oshkosh.</li>
     <li><b>Stricter extra flyovers.</b> Credit an extra flyover only when its Doppler scale is within 8%. A few correct answers took credit from planes that needed 30–46%.</li>
     <li><b>Refine the spot with the Doppler scale.</b> The planes needed 1.16 at the spot 0.9 km off and 1.01 at the real one.</li>
@@ -331,16 +389,222 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
     <li><b>Mains hum dating</b>, if grid frequency data comes through.</li>
     <li><b>Other Doppler sources with public tracks:</b> ships with AIS, train horns.</li>
     <li><b>Jets near airports</b>, with a stricter timing check.</li>
-    <li><b>More labeled recordings.</b> Four positives can't set a threshold.</li>
+    <li><b>More labeled recordings.</b> Six positives can't set a threshold.</li>
   </ul>
 
   <h2>Try it</h2>
-  <p>The code is at <a href="https://github.com/dreamiurg/pinpoint">github.com/dreamiurg/pinpoint</a>. It's a Python CLI, and it also ships a Claude Code skill that runs the whole thing from a YouTube link.</p>
+  <p>The code is at <a href="https://github.com/dreamiurg/geodoppler">github.com/dreamiurg/geodoppler</a>. It's a Python CLI, and it also ships a Claude Code skill that runs the whole thing from a YouTube link. The command is still called <code>pinpoint</code>, the project's name before the repo got renamed.</p>
   <pre>uv run pinpoint fetch 'https://www.youtube.com/watch?v=...'
 uv run pinpoint events runs/&lt;id&gt;
 uv run pinpoint locate runs/&lt;id&gt; --date 2026-09-30 --bbox 41.1,-81.5,150 --decoys 5</pre>
-  <p>Expect a 4 GB download per day of flight data and a few minutes per search. Every experiment above has its scripts and a report in <code>experiments/</code>, including the ones that didn't work. PRs welcome.</p>
+  <p>Expect a 4 GB download per day of flight data and a few minutes per search. Only some of the experiments are in the public repo so far: the held-out test, the recall analysis and the integration check, each with its scripts and a report in <code>experiments/</code>. The rest aren't published yet. PRs welcome.</p>
   <p>A note on privacy: everything here is from public livestreams whose owners named their region, and this post doesn't go finer than that. The same technique works on any long outdoor recording, which is the point of colsto's original video. If you stream from your backyard, the planes overhead are part of your location.</p>
 
-  <footer>Flight data from <a href="https://adsb.lol">adsb.lol</a>, elevation from Copernicus GLO-90. Idea and method from colsto's <a href="https://youtu.be/UytYrhYLOKI">video</a>. Times are UTC.</footer>
+  <footer>Flight data from adsb.lol, elevation from Copernicus GLO-90. Idea and method from colsto's video. Times are UTC.</footer>
 </article>
+
+<script>
+// Doppler maths copied from src/pinpoint/doppler.py ideal_curve: t is reception time, CPA sound arrives at t = 0.
+const C = 343;
+function heard(t, f0, v, d) {
+  const s = t + d / C;                      // time since the plane was at closest approach
+  const a = C * C - v * v;
+  const tau = (C * C * s - Math.sqrt(C * C * v * v * s * s + a * d * d)) / a;  // when the sound heard now was made
+  const vr = v * v * tau / Math.hypot(d, v * tau);                              // radial speed at that moment
+  return { s, tau, f: f0 * C / (C + vr) };
+}
+console.assert(Math.abs(heard(0, 100, 57, 1800).f - 100) < 1e-9, 'curve must cross f0 when the CPA sound arrives');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+function whenVisible(el, fn) {
+  if (!('IntersectionObserver' in window)) return;
+  const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); fn(); } }, { threshold: 0.4 });
+  io.observe(el);
+}
+
+// Physics: a plane passes the mic; pitch curve draws in sync.
+(() => {
+  const F0 = 100, T0 = -130, T1 = 130, DUR = 9000, K = 0.02, MX = 240, MY = 182;  // K: px per metre on the top view
+  const q = id => document.getElementById(id);
+  const px = t => 50 + (t - T0) / (T1 - T0) * 420, py = f => 195 - (f - 70) / 75 * 175;
+  const dIn = q('dop-d'), vIn = q('dop-v'), btn = q('dop-play');
+  const P = () => ({ d: +dIn.value, v: +vIn.value });
+  let t = T1, playing = false, last = 0, committed = P();
+  const set = (id, a) => { const e = q(id); for (const k in a) e.setAttribute(k, a[k]); };
+  function curve({ d, v }, tEnd) {
+    let p = '';
+    for (let x = T0; x <= tEnd; x += 1) p += (p ? 'L' : 'M') + px(x).toFixed(1) + ' ' + py(heard(x, F0, v, d).f).toFixed(1);
+    return p;
+  }
+  function draw() {
+    const { d, v } = P(), h = heard(t, F0, v, d), ly = MY - d * K, xe = MX + v * h.tau * K;
+    q('dop-d-out').textContent = (d / 1000).toFixed(1) + ' km';
+    q('dop-v-out').textContent = v + ' m/s';
+    set('dop-track', { y1: ly, y2: ly });
+    set('dop-miss', { y1: ly });
+    set('dop-miss-t', { y: Math.min(ly, MY - 14) + (MY - Math.min(ly, MY - 14)) / 2 + 4 });
+    q('dop-miss-t').textContent = (d / 1000).toFixed(1) + ' km';
+    set('dop-plane', { transform: `translate(${MX + v * h.s * K} ${ly})` });
+    set('dop-emit', { cx: xe, cy: ly });
+    set('dop-ray', { x1: xe, y1: ly });
+    set('dop-ring', { cx: xe, cy: ly, r: C * (h.s - h.tau) * K });
+    set('dop-curve', { d: curve({ d, v }, t) });
+    set('dop-dot', { cx: px(t), cy: py(h.f) });
+    q('dop-read').textContent = `${t >= 0 ? '+' : '−'}${Math.abs(Math.round(t))} s · heard ${h.f.toFixed(1)} Hz · plane ${(Math.hypot(v * h.s, d) / 1000).toFixed(1)} km away · this sound left it ${(h.s - h.tau).toFixed(1)} s ago`;
+  }
+  const setBtn = () => { btn.textContent = playing ? 'Pause' : 'Play'; };
+  function frame(now) {
+    if (!playing) return;
+    t = Math.min(T1, t + (now - last) / DUR * (T1 - T0)); last = now;
+    if (t >= T1) playing = false;
+    draw(); setBtn();
+    if (playing) requestAnimationFrame(frame);
+  }
+  function play(from) {
+    t = from ?? (t >= T1 ? T0 : t);
+    playing = true; last = performance.now(); setBtn(); requestAnimationFrame(frame);
+  }
+  function commit() {
+    q('dop-ghost').setAttribute('d', curve(committed, T1));
+    committed = P();
+    if (reducedMotion) { t = T1; draw(); } else play(T0);
+  }
+  btn.addEventListener('click', () => { if (playing) { playing = false; setBtn(); } else play(); });
+  q('dop-replay').addEventListener('click', () => play(T0));
+  for (const inp of [dIn, vIn]) {
+    inp.addEventListener('input', () => { if (!playing) draw(); });
+    inp.addEventListener('change', commit);
+  }
+  q('dop-close').addEventListener('click', () => { dIn.value = 500; commit(); });
+  q('dop-far').addEventListener('click', () => { dIn.value = 6000; commit(); });
+  draw(); setBtn();  // complete final frame at rest
+  if (!reducedMotion) whenVisible(q('dop'), () => play(T0));
+})();
+
+// Pipeline: schematic walk through search.locate's stages.
+(() => {
+  const NS = 'http://www.w3.org/2000/svg', spec = document.getElementById('pp-spec'), map = document.getElementById('pp-map');
+  const el = (tag, a, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); parent.appendChild(e); return e; };
+  const txt = (s, a, parent) => { const e = el('text', a, parent); e.textContent = s; return e; };
+  const show = (e, on) => { e.style.opacity = on ? 1 : 0; };
+
+  // spectrogram: noise streaks and three flyovers drawn with the real curve formula
+  let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  for (let i = 0; i < 46; i++) { const x = 34 + rnd() * 292, y = 24 + rnd() * 120; el('line', { x1: x, x2: x, y1: y, y2: y + 20 + rnd() * 50, class: 'stroke-line', 'stroke-width': 1.5 }, spec); }
+  el('line', { x1: 30, x2: 330, y1: 200, y2: 200, class: 'stroke-line' }, spec);
+  el('line', { x1: 30, x2: 30, y1: 20, y2: 200, class: 'stroke-line' }, spec);
+  txt('pitch', { x: 30, y: 14 }, spec); txt('spectrogram · schematic', { x: 330, y: 14, 'text-anchor': 'end' }, spec);
+  const fy = f => 200 - (f - 60) / 90 * 170;
+  const EV = [{ x: 72, f0: 110, v: 57, d: 1800, n: '1', at: '2,200 s' }, { x: 180, f0: 95, v: 62, d: 3000, n: '3', at: 'extra' }, { x: 288, f0: 100, v: 70, d: 750, n: '2', at: '6,282 s' }];
+  const models = EV.map(e => {
+    let p = ''; for (let t = -240; t <= 240; t += 4) p += (p ? 'L' : 'M') + (e.x + t / 240 * 42).toFixed(1) + ' ' + fy(heard(t, e.f0, e.v, e.d).f).toFixed(1);
+    el('path', { d: p, fill: 'none', class: 'stroke-acc', 'stroke-width': 2.5 }, spec);
+    txt(e.n, { x: e.x - 38, y: fy(e.f0 * C / (C - e.v)) - 8, class: 'ink', 'text-anchor': 'middle' }, spec);
+    txt((e.d / 1000).toFixed(1) + ' km', { x: e.x, y: 172, 'text-anchor': 'middle', class: 'ink' }, spec);
+    txt(e.v + ' m/s', { x: e.x, y: 188, 'text-anchor': 'middle' }, spec);
+    txt(e.at, { x: e.x, y: 216, 'text-anchor': 'middle' }, spec);
+    return el('path', { d: p, fill: 'none', class: 'stroke-ok pp-fade', 'stroke-width': 1.5, 'stroke-dasharray': '4 3', transform: 'translate(0 -5)' }, spec);
+  });
+  const gap = el('g', { class: 'pp-fade' }, spec);
+  el('path', { d: 'M72 44 V36 H288 V44', fill: 'none', class: 'stroke-muted' }, gap);
+  txt('gap 4,082 s ±10 s', { x: 180, y: 30, 'text-anchor': 'middle', class: 'ink' }, gap);
+
+  // map: grid points, four plane tracks
+  el('rect', { x: 0.5, y: 0.5, width: 339, height: 229, rx: 4, fill: 'none', class: 'stroke-line' }, map);
+  txt('map · schematic, not to scale', { x: 330, y: 224, 'text-anchor': 'end' }, map);
+  const line = (p, q) => { const n = Math.hypot(q[0] - p[0], q[1] - p[1]); return { p, u: [(q[0] - p[0]) / n, (q[1] - p[1]) / n] }; };
+  const sd = (L, x, y) => (x - L.p[0]) * L.u[1] - (y - L.p[1]) * L.u[0];   // signed distance to a track
+  const A = line([20, 40], [320, 200]), B = line([40, 215], [310, 25]), DA = 36, DB = 24, HW = 9;
+  // the four spots at the fitted distance from both A and B; one of them gets each role
+  const cross = (sa, sb) => {
+    const r1 = sa + A.p[0] * A.u[1] - A.p[1] * A.u[0], r2 = sb + B.p[0] * B.u[1] - B.p[1] * B.u[0];
+    const det = A.u[1] * -B.u[0] + A.u[0] * B.u[1];
+    return [(r1 * -B.u[0] + A.u[0] * r2) / det, (A.u[1] * r2 - B.u[1] * r1) / det];
+  };
+  const ctr = { T: cross(DA, DB), X: cross(-DA, DB), S: cross(DA, -DB), Z: cross(-DA, -DB) };  // true spot, coincidence, silenced, wrong time gap
+  const dots = [];
+  for (let x = 10; x <= 330; x += 10) for (let y = 10; y <= 210; y += 10) {
+    const D = { x, y, a: Math.abs(Math.abs(sd(A, x, y)) - DA) < HW, b: Math.abs(Math.abs(sd(B, x, y)) - DB) < HW };
+    D.role = Object.keys(ctr).find(r => Math.hypot(x - ctr[r][0], y - ctr[r][1]) < 13);
+    D.e = el('circle', { cx: x, cy: y, r: 1.3, class: 'pp-dot' }, map);
+    dots.push(D);
+  }
+  // a track through point c, at the angle that keeps it farthest from the spots it must miss
+  function through(c, miss, off) {
+    let best;
+    for (let deg = 0; deg < 180; deg += 5) {
+      const u = [Math.cos(deg * Math.PI / 180), Math.sin(deg * Math.PI / 180)], L = { p: [c[0] - u[1] * off, c[1] + u[0] * off], u };
+      const m = Math.min(...miss.map(s => Math.abs(sd(L, s[0], s[1]))));
+      if (!best || m > best.m) best = { L, m };
+    }
+    return best.L;
+  }
+  const Cc = through(ctr.T, [ctr.X, ctr.S], 14), Dd = through(ctr.S, [ctr.T, ctr.X], 6);
+  const trk = (L, name, cls) => {
+    const g = el('g', { class: 'pp-fade' }, map);
+    const e = el('line', { x1: L.p[0] - 500 * L.u[0], y1: L.p[1] - 500 * L.u[1], x2: L.p[0] + 500 * L.u[0], y2: L.p[1] + 500 * L.u[1], class: cls + ' pp-trk', 'stroke-width': 1.5 }, g);
+    let s = -400; while (s < 400) { const x = L.p[0] + s * L.u[0], y = L.p[1] + s * L.u[1]; if (x > 16 && x < 300 && y > 22 && y < 210) break; s += 4; }
+    const t = txt('plane ' + name, { x: L.p[0] + s * L.u[0] + 4, y: L.p[1] + s * L.u[1] - 4 }, g);
+    return { g, e, t };
+  };
+  const tA = trk(A, 'A', 'stroke-acc'), tB = trk(B, 'B', 'stroke-cool'), tC = trk(Cc, 'C', 'stroke-muted'), tD = trk(Dd, 'D', 'stroke-muted');
+  const note = txt('', { x: 0, y: 0, class: 'ink' }, map);
+  const pin = el('g', { class: 'pp-fade', style: 'transition: opacity .5s, transform .6s' }, map);
+  el('path', { d: 'M0 0 C-5 -8 -9 -12 -9 -18 A9 9 0 1 1 9 -18 C9 -12 5 -8 0 0 Z', style: 'fill:var(--accent)' }, pin);
+  el('circle', { cx: 0, cy: -18, r: 3, style: 'fill:var(--surface)' }, pin);
+  txt('pin + start time', { x: 12, y: -16, class: 'ink' }, pin);
+
+  const SAY = [
+    'Events: find the falling curves in the spectrogram and fit each one to a straight pass: base tone, speed, closest distance and the second it passed.',
+    'Candidates: on a 200 m grid, find real ADS-B tracks whose ground speed fits each curve, and the points at the right distance from them. Orange: in reach of plane A for curve 1. Blue: plane B for curve 2. Jets and helicopters are dropped up front.',
+    'Offset filter: keep points where the two planes passed with the same gap as the two strongest curves, within ±10 s. One crossing has the wrong gap and goes.',
+    'Silence filter: drop points where another small plane passed close in between and the audio heard nothing. Plane D did that here.',
+    'Scoring: at each point left, model the exact curve each real track would make there (dashed green) and measure how bright the spectrogram is along it, then sweep speed by ±15%. Two spots score about the same.',
+    'Verification: every other curve must be explained by some real plane at the locked time. Plane C explains curve 3 at one spot only, and that spot pulls ahead.',
+    'Result: the best point is the pin, with the recording start time to the second. With --decoys 5 the same search runs on 5 other days to decide between high and low.'
+  ];
+  const stepBtns = [...document.querySelectorAll('#pp-steps button')], say = document.getElementById('pp-say'), btn = document.getElementById('pp-play');
+  let k = 6, timer = null;
+  function render(n) {
+    k = n;
+    stepBtns.forEach((b, i) => i === n ? b.setAttribute('aria-current', 'step') : b.removeAttribute('aria-current'));
+    say.textContent = SAY[n];
+    for (const D of dots) {
+      let fill = 'var(--muted)', r = 1.3, op = n ? 0.35 : 0.15;
+      if (n === 1) {
+        if (D.role || (D.a && D.b)) { fill = 'var(--ink)'; r = 2.4; op = 1; }
+        else if (D.a) { fill = 'var(--accent)'; r = 2; op = 0.9; }
+        else if (D.b) { fill = 'var(--cool)'; r = 2; op = 0.9; }
+      } else if (n >= 2 && D.role && D.role !== 'Z') {
+        fill = 'var(--ink)'; r = 2.6; op = 1;
+        if (D.role === 'S' && n >= 3) { fill = 'var(--bad)'; r = 2; op = 0.45; }
+        if (n >= 4 && D.role !== 'S') { fill = 'var(--accent)'; r = 3.2; }
+        if (n >= 5) { if (D.role === 'T') r = 4.2; if (D.role === 'X') { fill = 'var(--muted)'; r = 2.4; } }
+      }
+      D.e.style.fill = fill; D.e.style.opacity = op; D.e.setAttribute('r', r);
+    }
+    for (const T of [tA, tB, tC, tD]) show(T.g, n >= 1);
+    tD.e.setAttribute('class', (n === 3 ? 'stroke-bad' : 'stroke-muted') + ' pp-trk');
+    tC.e.setAttribute('class', (n >= 5 ? 'stroke-ok' : 'stroke-muted') + ' pp-trk');
+    tC.e.setAttribute('stroke-width', n >= 5 ? 2.5 : 1.5); tD.e.setAttribute('stroke-width', n === 3 ? 2.5 : 1.5);
+    models.forEach((m, i) => show(m, n >= (i === 1 ? 5 : 4)));
+    show(gap, n >= 2);
+    const at = n === 3 ? ['no curve heard', ctr.S] : n === 5 ? ['curve 3 explained', ctr.T] : null;
+    note.textContent = at ? at[0] : '';
+    if (at) { note.setAttribute('x', Math.min(at[1][0] + 10, 220)); note.setAttribute('y', at[1][1] + 22); note.style.fill = n === 3 ? 'var(--bad)' : 'var(--ok)'; }
+    show(pin, n === 6);
+    pin.style.transform = `translate(${ctr.T[0]}px, ${ctr.T[1] - (n === 6 ? 0 : 30)}px)`;
+  }
+  const stop = () => { clearTimeout(timer); timer = null; btn.textContent = 'Play'; };
+  function play(from) {
+    clearTimeout(timer); btn.textContent = 'Pause';
+    render(from ?? (k >= 6 ? 0 : k));
+    const tick = () => { if (k >= 6) return stop(); render(k + 1); timer = setTimeout(tick, 2800); };
+    timer = setTimeout(tick, 2800);
+  }
+  btn.addEventListener('click', () => timer ? stop() : play());
+  document.getElementById('pp-replay').addEventListener('click', () => play(0));
+  stepBtns.forEach((b, i) => b.addEventListener('click', () => { stop(); render(i); }));
+  render(6); btn.textContent = 'Play';  // complete final frame at rest
+  if (!reducedMotion) whenVisible(document.getElementById('pp'), () => play(0));
+})();
+</script>
