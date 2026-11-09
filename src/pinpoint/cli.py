@@ -239,16 +239,19 @@ def locate(run: Path, date: str, bbox, step=200.0, open_map=True, start=None, da
     log(f"ADS-B for {date} (first use downloads ~4 GB from adsb.lol)")
     dates = [(pd.Timestamp(date) + pd.Timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
     df = pd.concat([pd.read_parquet(adsb.ensure_day(d, DATA)) for d in dates], ignore_index=True)
-    df = df.astype({"icao": "category", "type": "category"}).sort_values(["icao", "t"], kind="stable")
+    df = df.astype({"icao": "category", "type": "category"})
+    if days > 1:  # each day's parquet is already (icao, t)-sorted
+        df = df.sort_values(["icao", "t"], kind="stable")
     elev = Elevation(DATA)
     res = []
-    for tb in tiles(bbox):
-        pad = 0.15
-        sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
-        log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
-        r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start, elev=elev)
-        if len(r):
-            res.append(r)
+    with search.pool(sp, evs, elev) as ex:
+        for tb in tiles(bbox):
+            pad = 0.15
+            sub = df[(df.lat > tb[0] - pad) & (df.lat < tb[2] + pad) & (df.lon > tb[1] - pad * 1.4) & (df.lon < tb[3] + pad * 1.4)]
+            log(f"tile {tb[0]:.1f},{tb[1]:.1f}..{tb[2]:.1f},{tb[3]:.1f}: {sub.icao.nunique()} aircraft")
+            r = search.locate(sp, evs, sub, tb, step=step, log=lambda m: log("  " + m), start=start, elev=elev, ex=ex)
+            if len(r):
+                res.append(r)
     if not res:
         raise SystemExit("no location matched all events; widen --bbox, check --date, or refit events")
     cands = pd.concat(res, ignore_index=True).sort_values("score", ascending=False).reset_index(drop=True)

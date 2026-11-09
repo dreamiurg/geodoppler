@@ -11,8 +11,11 @@ Pipeline (after the source video's method):
      every event's f0 absorb measurement error; later events' times stay locked to geometry.
 """
 
+import tempfile
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -40,23 +43,25 @@ class Tolerances:
 class Points:
     """Observer locations. A regular grid answers window queries by arithmetic, not masking."""
 
-    def __init__(self, lat, lon, regular=None, mask=None):
+    def __init__(self, lat, lon, regular=None, mask=None, elev=None):
         self.lat, self.lon, self._reg, self.mask = np.asarray(lat), np.asarray(lon), regular, mask
+        self.elev = elev  # optional ground metres per point, so passes() need not look it up per chunk
 
     def subset(self, idx):
         """Same grid, but window queries only return these indices."""
         mask = np.zeros(len(self.lat), bool)
         mask[idx] = True
-        return Points(self.lat, self.lon, self._reg, mask)
+        return Points(self.lat, self.lon, self._reg, mask, self.elev)
 
     @classmethod
-    def grid(cls, bbox, step_m):
+    def grid(cls, bbox, step_m, elev=None):
         lat0, lon0, lat1, lon1 = bbox
         dlat = step_m / DEG
         dlon = step_m / (DEG * np.cos(np.radians((lat0 + lat1) / 2)))
         la, lo = np.arange(lat0, lat1, dlat), np.arange(lon0, lon1, dlon)
         LA, LO = np.meshgrid(la, lo, indexing="ij")
-        return cls(LA.ravel(), LO.ravel(), (lat0, lon0, dlat, dlon, len(la), len(lo)))
+        lat, lon = LA.ravel(), LO.ravel()
+        return cls(lat, lon, (lat0, lon0, dlat, dlon, len(la), len(lo)), elev=None if elev is None else elev(lat, lon))
 
     def __len__(self):
         return len(self.lat)
@@ -83,10 +88,16 @@ def segments(df: pd.DataFrame, max_gap=60.0, min_len=20):
                 yield str(icao), g.iloc[s]
 
 
-def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
-    """For points within dmax of a pass: delayed CPA time, slant distance, ground speed at CPA.
-    shortcut: one CPA per point per pass (global min); a pass that circles a point twice keeps only the closest."""
-    tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
+def _cols(seg: pd.DataFrame):
+    return seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy(), seg.gs.to_numpy()
+
+
+def passes(seg, pts: Points, dmax, elev=None, chunk=32):
+    """For points within dmax of a pass (`seg`: frame or its _cols arrays): delayed CPA time, slant distance,
+    ground speed at CPA. shortcut: one CPA per point per pass (global min); a pass that circles a point twice
+    keeps only the closest."""
+    s_t, s_lat, s_lon, s_alt, s_gs = seg if isinstance(seg, tuple) else _cols(seg)
+    tr = Track(s_t, s_lat, s_lon, s_alt)
     tr_t, tr_lat, tr_lon, tr_alt = tr.t[tr.ok][::2], tr.lat[tr.ok][::2], tr.lon[tr.ok][::2], tr.alt[tr.ok][::2]
     if len(tr_t) < 3:
         return None
@@ -101,7 +112,10 @@ def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
         if not len(gi):
             continue
         gx, gy, _ = enu(pts.lat[gi], pts.lon[gi], 0, lat_c, lon_c)
-        ge = 0.0 if elev is None else elev(pts.lat[gi], pts.lon[gi])[:, None]
+        if elev is None:
+            ge = 0.0
+        else:
+            ge = (elev(pts.lat[gi], pts.lon[gi]) if pts.elev is None else pts.elev[gi])[:, None]
         d2 = (gx[:, None] - ax[None, sl]) ** 2 + (gy[:, None] - ay[None, sl]) ** 2 + (tr_alt[None, sl] - ge) ** 2
         k = d2.argmin(1)
         dk = np.sqrt(d2[np.arange(len(gi)), k])
@@ -121,23 +135,43 @@ def passes(seg: pd.DataFrame, pts: Points, dmax, elev=None, chunk=32):
     if not keep.any():
         return None
     G, D, K = G[keep], D[keep], K[keep]
-    gs = np.interp(tr_t[K], seg.t.to_numpy(), seg.gs.to_numpy())
+    gs = np.interp(tr_t[K], s_t, s_gs)
     return pd.DataFrame({"g": G, "t": tr_t[K] + D / C, "d": D, "gs": gs})
 
 
-def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, start=None):
-    """`start`: optional (lo, hi) unix bounds on when the recording began."""
+def _passes_job(job):
+    """Worker: candidate passes for a batch of segments; the tile's grid is rebuilt once per tile, not shipped."""
+    grid, segs, d0, d1, v0, v1 = job
+    if _W.get("grid_key") != grid:
+        bbox, step, use_elev = grid
+        _W.update(grid_key=grid, grid=Points.grid(bbox, step, _W["elev"] if use_elev else None))
+    return [_in_range(passes(s, _W["grid"], d1, _W["elev"] if grid[2] else None), d0, v0, v1) for s in segs]
+
+
+def _in_range(p, d0, v0, v1):
+    return None if p is None else p[(p.d >= d0) & (p.gs >= v0) & (p.gs <= v1)]
+
+
+def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, start=None, ex=None, grid=None,
+                     workers=10):
+    """`start`: optional (lo, hi) unix bounds on when the recording began.
+    `ex`, `grid`: a pool() and the (bbox, step, use_elev) that built `pts`, to spread the passes over workers."""
     v0, v1 = ev.v - tol.speed, ev.v + tol.speed
     d0, d1 = ev.d * (1 - tol.slant_rel), ev.d * (1 + tol.slant_rel)
     fast = df[(df.gs >= v0) & (df.gs <= v1)]
     if start is not None:
         fast = fast[(fast.t >= start[0] + ev.tc - 900) & (fast.t <= start[1] + ev.tc + 900)]
+    segs = [(icao, _cols(seg)) for icao, seg in segments(fast)]
+    if ex is None:
+        ps = (_in_range(passes(s, pts, d1, elev), d0, v0, v1) for _, s in segs)
+    else:
+        size = max(1, len(segs) // (workers * 16))  # small batches: a few long passes dominate the work
+        jobs = [(grid, [s for _, s in segs[i:i + size]], d0, d1, v0, v1) for i in range(0, len(segs), size)]
+        ps = (p for part in ex.map(_passes_job, jobs) for p in part)
     out = []
-    for icao, seg in segments(fast):
-        p = passes(seg, pts, d1, elev)
+    for (icao, _), p in zip(segs, ps):
         if p is None:
             continue
-        p = p[(p.d >= d0) & (p.gs >= v0) & (p.gs <= v1)]
         if start is not None:
             p = p[(p.t - ev.tc >= start[0]) & (p.t - ev.tc <= start[1])]
         if len(p):
@@ -214,17 +248,22 @@ def score_point(spec: Spec, tracks, events, lat, lon, tol: Tolerances, elev0=0.0
 
 
 def _sweep(spec: Spec, t, vr, shifts, ks, f0s, harmonics):
-    """Best mean clipped brightness over placement shift x airspeed scale x f0. Returns (score, shift)."""
+    """Best mean clipped brightness over placement shift x airspeed scale x f0. Returns (score, shift).
+    Shifts are whole frames (0.5 s), so one gather over (shift, k, f0, t) replaces a Spec.sample per shift:
+    nearest bin as Spec.sample, and off-spectrogram samples land on Spec.scored's zero border."""
+    dt, df = spec.t[1] - spec.t[0], spec.f[1] - spec.f[0]
+    P = spec.scored
+    nf, nt = P.shape[0] - 2, P.shape[1] - 2
     ratio = C / (C + ks[:, None] * vr[None, :])  # (k, t)
     f = f0s[None, :, None] * ratio[:, None, :]  # (k, f0, t)
-    best, best_sh = -np.inf, 0.0
-    for sh in shifts:
-        tt = np.broadcast_to(t + sh, f.shape)
-        v = sum(np.nan_to_num(spec.sample(tt, f * h), nan=0.0).clip(-2, 6) for h in harmonics) / len(harmonics)
-        m = v.mean(-1).max()
-        if m > best:
-            best, best_sh = m, sh
-    return float(best), float(best_sh)
+    it = np.clip(np.rint((t[None, :] + shifts[:, None] - spec.t[0]) / dt).astype(np.intp) + 1, 0, nt + 1)  # (sh, t)
+    v = 0.0
+    for h in harmonics:
+        jf = np.clip(np.rint((f * h - spec.f[0]) / df).astype(np.intp) + 1, 0, nf + 1)  # (k, f0, t)
+        v = v + P.ravel()[jf[None] * (nt + 2) + it[:, None, None, :]].astype(np.float64)  # (sh, k, f0, t)
+    m = (v / len(harmonics)).mean(-1).reshape(len(shifts), -1).max(1)
+    i = int(np.argmax(m))  # first best shift
+    return float(m[i]), float(shifts[i])
 
 
 def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: list[Event], df: pd.DataFrame,
@@ -236,6 +275,14 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
     combo = [f"icao{i + 1}" for i in range(n)]
     best = cands.drop_duplicates(combo).head(top).copy()
     log(f"verifying {len(best)} best combinations against {len(extra)} extra event(s)")
+    if len(best) and len(extra):  # cut the day once to a superset of every per-row `near` window below
+        whens = np.concatenate([best.start.to_numpy() + e.tc for e in extra])
+        pad = max(e.d for e in extra) * (1 + tol.slant_rel)
+        dlat = pad / DEG + 0.01 + 1e-6  # 1e-6: the per-row test below rounds differently at the edge
+        dlon = pad / (DEG * np.cos(np.radians(np.abs(best.lat.to_numpy()).max()))) + 0.01 + 1e-6
+        df = df[(df.t > whens.min() - 400) & (df.t < whens.max() + 400)
+                & (df.lat > best.lat.min() - dlat) & (df.lat < best.lat.max() + dlat)
+                & (df.lon > best.lon.min() - dlon) & (df.lon < best.lon.max() + dlon)]
     rel = np.arange(-70.0, 71.0, spec.t[1] - spec.t[0])
     ks = np.linspace(*tol.airspeed, tol.airspeed_steps)
     extra_scores = np.zeros((len(best), len(extra)))
@@ -269,24 +316,48 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
     return best.sort_values("score", ascending=False).reset_index(drop=True)
 
 
-def df_for(df, hits, n):
-    """Only the tracks scoring needs, to keep worker start-up cheap."""
+def _track_rows(df, hits, n, span=600):
+    """(icao, CPA time) -> the rows _track() selects, as Track arguments; jobs carry these, not the frame."""
     want = set().union(*(set(hits[f"icao{i}"]) for i in range(n)))
-    return df[df.icao.isin(want)]
+    by = {str(i): (g.t.to_numpy(), g.lat.to_numpy(), g.lon.to_numpy(), g.alt_m.to_numpy())
+          for i, g in df[df.icao.isin(want)].groupby("icao", observed=True, sort=False)}
+
+    def rows(icao, t0):
+        t, lat, lon, alt = by[icao]
+        m = np.abs(t - t0) < span
+        return t[m], lat[m], lon[m], alt[m]
+    return rows
 
 
 _W = {}
 
 
-def _init_worker(spec, events, df, elev):
-    _W.update(spec=spec, events=events, df=df, elev=elev)
+def _init_worker(t, f, tmp, events, elev):
+    spec = Spec(t, f, np.load(Path(tmp) / "S.npy", mmap_mode="r"))
+    spec.__dict__["scored"] = np.load(Path(tmp) / "scored.npy", mmap_mode="r")  # fills the cached_property
+    _W.update(spec=spec, events=events, elev=elev)
+
+
+@contextmanager
+def pool(spec: Spec, events, elev=None, workers=10, tol: Tolerances = Tolerances()):
+    """Worker pool for locate(), reusable across tiles. Workers memory-map the spectrogram crop scoring can touch:
+    pickling ~70 MB to each spawned worker serialised start-up at ~1.5 s per worker."""
+    fmax = max(e.f0 * max(e.harmonics) for e in events) * (1.6 + tol.f0_rel)
+    fmin = min(e.f0 for e in events) * (0.6 - tol.f0_rel)
+    small = spec.crop(events[0].tc - 300, events[-1].tc + 300, fmin, fmax)
+    with tempfile.TemporaryDirectory(prefix="pinpoint-") as tmp:
+        np.save(Path(tmp) / "S.npy", small.S)
+        np.save(Path(tmp) / "scored.npy", small.scored)
+        with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(small.t, small.f, tmp, events, elev)) as ex:
+            yield ex
 
 
 def _score_job(job):
-    """Score points for one aircraft combination. `split` > 0 expands each coarse point into 4 at split/2 offsets."""
-    jid, key, lats, lons, tol, split = job
-    spec, events, df, elev = (_W[k] for k in ("spec", "events", "df", "elev"))
-    tracks = [_track(df, icao, t) for icao, t in key]
+    """Score points for one aircraft combination. `split` > 0 expands each coarse point into 4 at split/2 offsets.
+    `segs`: per event, the track rows _track_rows() selected."""
+    jid, key, lats, lons, tol, split, segs = job
+    spec, events, elev = (_W[k] for k in ("spec", "events", "elev"))
+    tracks = [Track(*s) for s in segs]
     off = (split / 2) / DEG
     subs = ((-1, -1), (-1, 1), (1, -1), (1, 1)) if split else ((0, 0),)
     rows = []
@@ -302,13 +373,17 @@ def _score_job(job):
 
 def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, fine=100.0,
            tol: Tolerances = Tolerances(), elev=None, log=print, workers=10, start=None,
-           refine=300, per_combo=8) -> pd.DataFrame:
-    pts = Points.grid(bbox, step)
+           refine=300, per_combo=8, ex=None, chunk=32) -> pd.DataFrame:
+    """`ex`: a pool() to reuse across tiles; without one, locate starts its own."""
+    if ex is None:
+        with pool(spec, events, elev, workers, tol) as ex:
+            return locate(spec, events, df, bbox, step, fine, tol, elev, log, workers, start, refine, per_combo, ex, chunk)
+    pts = Points.grid(bbox, step, elev)
     glat, glon = pts.lat, pts.lon
     log(f"grid: {len(pts):,} points at {step:.0f} m")
     cands = []
     for i, e in enumerate(events):
-        c = candidate_passes(df, e, pts, tol, elev, start)
+        c = candidate_passes(df, e, pts, tol, elev, start, ex, (tuple(bbox), step, elev is not None), workers)
         log(f"event {i + 1}: {len(c):,} (point, pass) candidates from {c.icao.nunique() if len(c) else 0} aircraft")
         cands.append(c)
     hits = offset_filter(cands, events, tol)
@@ -319,25 +394,25 @@ def locate(spec: Spec, events: list[Event], df: pd.DataFrame, bbox, step=200.0, 
     if hits.empty:
         return pd.DataFrame()
     n = len(events)
-    # crop the spectrogram to what scoring can touch, so workers get a small copy
-    fmax = max(e.f0 * max(e.harmonics) for e in events) * (1.6 + tol.f0_rel)
-    fmin = min(e.f0 for e in events) * (0.6 - tol.f0_rel)
-    small = spec.crop(events[0].tc - 300, events[-1].tc + 300, fmin, fmax)
     keys = [tuple((getattr(r, f"icao{i}"), getattr(r, f"t{i}")) for i in range(n)) for r in hits.itertuples()]
     hits = hits.assign(key=[tuple((a, round(t / 600)) for a, t in k) for k in keys], key_t=keys)
     fast = replace(tol, airspeed=(1.0, 1.0), airspeed_steps=1)
     jobs = [(jid, grp.key_t.iloc[0], glat[grp.g.to_numpy()], glon[grp.g.to_numpy()], fast, fine)
             for jid, (_, grp) in enumerate(hits.groupby("key", sort=False))]
     log(f"scoring {len(hits):,} hits in {len(jobs):,} aircraft combinations (no wind)")
-    with ProcessPoolExecutor(workers, initializer=_init_worker, initargs=(small, events, df_for(df, hits, n), elev)) as ex:
-        first = pd.DataFrame([r for part in ex.map(_score_job, jobs, chunksize=max(1, len(jobs) // (workers * 8)))
-                              for r in part]).sort_values("score", ascending=False)
-        # stage 2: the best points of the top combinations, with the wind (airspeed) sweep
-        keep = first.drop_duplicates("job").head(refine)["job"]
-        top = first[first.job.isin(keep)].groupby("job", sort=False).head(per_combo)
-        jobs2 = [(jid, jobs[jid][1], g.lat.to_numpy(), g.lon.to_numpy(), tol, 0) for jid, g in top.groupby("job", sort=False)]
-        log(f"refining {len(top):,} points of the top {len(jobs2)} combinations with wind")
-        rows = [r for part in ex.map(_score_job, jobs2, chunksize=max(1, len(jobs2) // (workers * 4))) for r in part]
+    rows_for = _track_rows(df, hits, n)
+    segs = [[rows_for(icao, t) for icao, t in key] for _, key, *_ in jobs]
+    # big combinations go out in point chunks so all workers stay busy; map() keeps the row order
+    tasks = [(jid, key, la[i:i + chunk], lo[i:i + chunk], t, split, seg)
+             for (jid, key, la, lo, t, split), seg in zip(jobs, segs) for i in range(0, len(la), chunk)]
+    first = pd.DataFrame([r for part in ex.map(_score_job, tasks, chunksize=max(1, len(tasks) // (workers * 8)))
+                          for r in part]).sort_values("score", ascending=False)
+    # stage 2: the best points of the top combinations, with the wind (airspeed) sweep
+    keep = first.drop_duplicates("job").head(refine)["job"]
+    top = first[first.job.isin(keep)].groupby("job", sort=False).head(per_combo)
+    jobs2 = [(jid, jobs[jid][1], g.lat.to_numpy(), g.lon.to_numpy(), tol, 0, segs[jid]) for jid, g in top.groupby("job", sort=False)]
+    log(f"refining {len(top):,} points of the top {len(jobs2)} combinations with wind")
+    rows = [r for part in ex.map(_score_job, jobs2, chunksize=max(1, len(jobs2) // (workers * 4))) for r in part]
     out = pd.DataFrame(rows).sort_values("score", ascending=False).reset_index(drop=True)
     log(f"scored {len(first):,} points at {fine:.0f} m; refined {len(out):,}")
     return out

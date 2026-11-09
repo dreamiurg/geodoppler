@@ -2,6 +2,7 @@
 
 import subprocess
 from dataclasses import dataclass
+from functools import cached_property
 
 import numpy as np
 import scipy.signal as ss
@@ -29,6 +30,14 @@ class Spec:
         mt = (self.t >= t0) & (self.t <= t1)
         mf = (self.f >= f0) & (self.f <= f1)
         return Spec(self.t[mt], self.f[mf], self.S[np.ix_(mf, mt)])
+
+    @cached_property
+    def scored(self) -> np.ndarray:
+        """S as scoring sees it: NaN -> 0, clipped to [-2, 6], with a zero border for off-spectrogram samples.
+        (Clipping before the float64 cast is exact: -2 and 6 are float32-representable.)"""
+        P = np.zeros((len(self.f) + 2, len(self.t) + 2), np.float32)
+        np.clip(np.nan_to_num(self.S, nan=0.0), -2, 6, out=P[1:-1, 1:-1])
+        return P
 
     def sample(self, t: np.ndarray, f: np.ndarray) -> np.ndarray:
         """Brightness at (t, f) points, nearest bin; NaN outside."""
