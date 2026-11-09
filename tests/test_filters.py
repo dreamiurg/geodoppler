@@ -38,3 +38,18 @@ def test_doppler_scale_recovers_radial_velocity_scale():
         S[np.rint((f - sf[0]) / 0.5).astype(int), np.flatnonzero(sel)] = 5.0
         e = Event(tcpa - 90, tcpa + 90, 100.0, 60.0, 1000.0, tcpa, 1.0)
         assert abs(doppler_scale(Spec(st, sf, S), tr, e, lat0, lon0, 0.0) - k) <= 0.011
+
+
+def test_offset_filter_in_blocks_equals_one_join():
+    """Blocking the grid-point join (memory) must not change the hits or their order."""
+    from pinpoint.search import offset_filter
+    rng = np.random.default_rng(0)
+    evs = [Event(0, 0, 100, 60, 1000, 100.0, 1), Event(0, 0, 100, 60, 1000, 400.0, 1)]
+
+    def cands(n, t0):
+        return pd.DataFrame({"g": rng.integers(0, 40, n), "t": t0 + rng.uniform(-30, 30, n), "d": 1.0, "gs": 60.0,
+                             "icao": rng.choice(["a", "b", "c", "d"], n)})
+    c = [cands(300, 1000.0), cands(300, 1300.0)]
+    whole = offset_filter(c, evs, Tolerances(), block=10**9)
+    assert len(whole) > 100
+    pd.testing.assert_frame_equal(whole, offset_filter(c, evs, Tolerances(), block=3))

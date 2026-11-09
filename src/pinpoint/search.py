@@ -182,14 +182,24 @@ def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, sta
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=["g", "t", "d", "gs", "icao"])
 
 
-def offset_filter(cands: list[pd.DataFrame], events: list[Event], tol: Tolerances):
-    """Join per-event passes on grid point where CPA offsets match the recording."""
+def offset_filter(cands: list[pd.DataFrame], events: list[Event], tol: Tolerances, block=50_000):
+    """Join per-event passes on grid point where CPA offsets match the recording.
+    The join runs in blocks of `block` grid points: busy airspace (Orlando, 1M points, ~20 passes per point per
+    event) made the unfiltered many-to-many join 949M rows (~84 GB): the process was killed (exit 70)."""
     cur = cands[0].rename(columns={c: f"{c}0" for c in ["t", "d", "gs", "icao"]})
     for i in range(1, len(events)):
         nxt = cands[i].rename(columns={c: f"{c}{i}" for c in ["t", "d", "gs", "icao"]})
-        cur = cur.merge(nxt, on="g")
         want = events[i].tc - events[0].tc
-        cur = cur[(np.abs((cur[f"t{i}"] - cur["t0"]) - want) <= tol.offset_s) & (cur[f"icao{i}"] != cur["icao0"])]
+        cur = cur.reset_index(drop=True)
+        ug = np.unique(cur.g.to_numpy())
+        parts = []
+        for lo in range(0, len(ug), block):
+            g0, g1 = ug[lo], ug[min(lo + block, len(ug)) - 1]
+            left = cur[(cur.g >= g0) & (cur.g <= g1)].reset_index(names="_row")
+            m = left.merge(nxt[(nxt.g >= g0) & (nxt.g <= g1)], on="g")
+            parts.append(m[(np.abs((m[f"t{i}"] - m["t0"]) - want) <= tol.offset_s) & (m[f"icao{i}"] != m["icao0"])])
+        # back to the unblocked join's row order (left rows in order, their matches in right order)
+        cur = pd.concat(parts).sort_values("_row", kind="stable").drop(columns="_row") if parts else cur.merge(nxt.iloc[:0], on="g")
     return cur.reset_index(drop=True)
 
 
