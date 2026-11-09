@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from . import adsb, proptone
 from .audio import Spec
 from .doppler import Event, C
 from .flyover import Track, enu
@@ -162,6 +163,7 @@ def candidate_passes(df, ev: Event, pts: Points, tol: Tolerances, elev=None, sta
     v0, v1 = ev.v - tol.speed, ev.v + tol.speed
     d0, d1 = ev.d * (1 - tol.slant_rel), ev.d * (1 + tol.slant_rel)
     fast = df[(df.gs >= v0) & (df.gs <= v1)]
+    fast = fast[proptone.keep(fast.type, ev.fb, ev.fb_score, adsb._types())]
     if start is not None:
         fast = fast[(fast.t >= start[0] + ev.tc - 900) & (fast.t <= start[1] + ev.tc + 900)]
     segs = [(icao, _cols(seg)) for icao, seg in segments(fast)]
@@ -305,6 +307,7 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
     for j, e in enumerate(extra):
         f0s = e.f0 * (1 + np.linspace(-tol.f0_rel, tol.f0_rel, 25))
         dmax = e.d * (1 + tol.slant_rel)
+        types_ok = {c for c in df.type.cat.categories if proptone.plausible(c, e.fb, e.fb_score, adsb._types())}
         for i, r in enumerate(best.itertuples()):
             when = r.start + e.tc
             e0 = 0.0 if elev is None else float(elev([r.lat], [r.lon])[0])
@@ -312,7 +315,7 @@ def verify_extra(spec: Spec, cands: pd.DataFrame, extra: list[Event], primary: l
                       & (np.abs(df.lat - r.lat) < dmax / DEG + 0.01)
                       & (np.abs(df.lon - r.lon) < dmax / (DEG * np.cos(np.radians(r.lat))) + 0.01)]
             for icao, seg in segments(near, min_len=10):
-                if icao in {getattr(r, c) for c in combo}:
+                if icao in {getattr(r, c) for c in combo} or seg.type.iloc[0] not in types_ok:
                     continue
                 tr = Track(seg.t.to_numpy(), seg.lat.to_numpy(), seg.lon.to_numpy(), seg.alt_m.to_numpy())
                 t_rec, ratio, _, tcpa, rmin = tr.curve(r.lat, r.lon, e0)

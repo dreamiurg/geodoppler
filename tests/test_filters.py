@@ -38,3 +38,14 @@ def test_doppler_scale_recovers_radial_velocity_scale():
         S[np.rint((f - sf[0]) / 0.5).astype(int), np.flatnonzero(sel)] = 5.0
         e = Event(tcpa - 90, tcpa + 90, 100.0, 60.0, 1000.0, tcpa, 1.0)
         assert abs(doppler_scale(Spec(st, sf, S), tr, e, lat0, lon0, 0.0) - k) <= 0.011
+
+
+def test_base_tone_plausibility():
+    from pinpoint.adsb import _types
+    from pinpoint.proptone import plausible
+    T = _types()
+    assert plausible("C172", 79.2, 0.79, T)  # 2-blade piston, 2400 rpm x 2 / 60 = 80 Hz (U1bQZeogcsU)
+    assert not plausible("C72R", 176.5, 0.77, T)  # 0a7boP2vrtY wrong match: no C172 family near 176 Hz
+    assert plausible("C72R", 176.5, 0.30, T)  # comb estimate unreliable: no verdict
+    assert not plausible("BL8", 190.0, 0.9, T)  # unmapped piston (L1P): class rule fb <= 150 Hz
+    assert plausible("BL8", 120.0, 0.9, T) and plausible("", 190.0, 0.9, T)  # in class / unknown type
