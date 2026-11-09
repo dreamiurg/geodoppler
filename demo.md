@@ -18,8 +18,8 @@ frames: only the audio, a date, and a search area.
 
 ## Results that pass both checks
 
-The feeder cams are private homes, so their coordinates here are rounded to 0.01° (about 1 km). The distances
-between answers were measured on the unrounded values.
+The feeder cams are private homes, so their coordinates here are rounded to 0.01° (about 1 km), and colsto's
+is cut to the 0.01° his video gives. The distances between answers were measured on the unrounded values.
 
 | Video | Views | Search area | Answer | Place check | Time check (found / real) | Aircraft heard | Margin |
 | --- | --- | --- | --- | --- | --- | --- | --- |
