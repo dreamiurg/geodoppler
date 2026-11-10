@@ -89,7 +89,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   <p class="byline">Dmytro Gaivoronsky</p>
 
   <p class="lede">A few days ago I came across a fascinating video by colsto, <a href="https://youtu.be/UytYrhYLOKI">I discovered a sound that leaks your exact location</a>. It works out where a recording was made from the sound of small planes flying past the microphone. If you haven't seen it, go watch it first. It's amazing. It got me curious, so I built something like it as an open-source project.</p>
-  <p>This post is the first of two about what I built, what I found along the way, and the experiments and ideas I tried. Some worked, some did not.</p>
+  <p>This post is the first of two. This one covers the idea, how the tool works and what it found. The second covers the experiments I ran to make it better. Some worked, some did not.</p>
 
   <section class="nutshell" aria-labelledby="nutshell-h">
     <h2 id="nutshell-h">In a nutshell</h2>
@@ -178,7 +178,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   </figure>
   <p>The pieces:</p>
   <ul>
-    <li><b>Curve fitting.</b> Each candidate flyover gets a straight-line model (base pitch, speed, closest distance, time) fitted by <a href="https://en.wikipedia.org/wiki/Differential_evolution">differential evolution</a>. Harmonics count as extra evidence. Scoring also lets each plane's speed stretch by up to ±15%. The first version said that was for wind. It wasn't, and the wind experiment below explains why.</li>
+    <li><b>Curve fitting.</b> Each candidate flyover gets a straight-line model (base pitch, speed, closest distance, time) fitted by <a href="https://en.wikipedia.org/wiki/Differential_evolution">differential evolution</a>. Harmonics count as extra evidence. Scoring also lets each plane's speed stretch by up to ±15%. The first version said that was for wind. It wasn't; the next post explains why.</li>
     <li><b>Flight data.</b> <a href="https://github.com/adsblol/globe_history_2026">adsb.lol</a> publishes a full day of community-collected ADS-B traces as a ~4 GB download. The tool keeps only non-jet aircraft over the continental US, about 700 MB per day.</li>
     <li>A plane at 900 m is a lot closer to a backyard on a 400 m hill, so the tool needs the height of the ground. It takes that from <a href="https://registry.opendata.aws/copernicus-dem/">Copernicus GLO-90</a>, a free elevation map of the whole planet on a 90 m grid.</li>
     <li><b>Extra flyovers.</b> The two strongest curves narrow the search, and every other curve must also line up with some real plane at the right second. A curve with no plane behind it costs nothing, since plenty of small planes have no transponder.</li>
@@ -188,7 +188,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   <h2>22 test videos, 2 good answers</h2>
   <p>The first test was a validation set I put together from public YouTube recordings with a known place and day: beach cams, airport plane-spotting streams, nature soundscapes, railroad cams. Each one was searched within 100 km of its true location.</p>
   <p>Most had nothing to find. Six webcam archives had no audio track at all. Airport streams were full of planes, but taxiing and landing aircraft don't make clean passing curves. The two good answers were <a href="https://www.youtube.com/watch?v=4CxVxuMVkMc">colsto's own recording</a> and a <a href="https://www.youtube.com/watch?v=u8qudttB8PI">railroad camera in Huron, Ohio</a>, located 0.21 km from the real camera with a start time 33 seconds off. Searching that one again across a 300 km circle still landed 0.26 km away.</p>
-  <p>That set gave the first confidence rule: compare the best answer with the best answer using a different set of planes. If it wins by 15% or more, call it "high". At that point every high answer was right and every wrong one was low. With only two high answers, that rule was a guess. Wider searches broke it, and it was later replaced.</p>
+  <p>That set gave the first confidence rule: compare the best answer with the best answer using a different set of planes. If it wins by 15% or more, call it "high". At that point every high answer was right and every wrong one was low. With only two high answers, that rule was a guess. Wider searches broke it. Its replacement is in the next post.</p>
 
   <h2>Sound only</h2>
   <p>The first video I tried for real was my own hiking Short. The answer came from the title and the frames, which isn't the method I wanted to test. From then on the rule was sound only: the tool reads the duration, the date and the audio, and nothing that says where it was filmed.</p>
@@ -224,7 +224,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
       <circle cx="175.5" cy="56.75" r="7" fill="none" stroke="var(--accent)" stroke-width="2"/><text class="ink" x="188" y="61">Oct 19 (local check)</text>
       <line x1="80" y1="318" x2="142.5" y2="318" stroke="var(--ink)" stroke-width="2"/><text x="150" y="322">250 m</text><text x="420" y="322">N ↑</text>
     </svg>
-    <figcaption>Filled dots: blind 150 km searches. Hollow: Oct 19, at first found only by a search within 15 km of the Sep 30 answer, start time 6 s off. After the fixes below the 150 km search finds it too.</figcaption>
+    <figcaption>Filled dots: blind 150 km searches. Hollow: Oct 19, at first found only by a search within 15 km of the Sep 30 answer, start time 6 s off. After the fixes in the next post the 150 km search finds it too.</figcaption>
   </figure>
   <figure>
     <div class="pair">
@@ -239,16 +239,14 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
     <li>The <a href="https://www.youtube.com/watch?v=y-xpMDcnQvw">same Ohio feeder on Oct 19</a> landed near Pittsburgh with a 19% margin. It had matched three medical helicopters (an EC135, an AW139, another EC135). Its start time was 20:03. The stream actually went live at 13:51.</li>
     <li>A <a href="https://www.youtube.com/watch?v=0a7boP2vrtY">weather cam in Green Lake, Wisconsin</a> landed in northern Illinois, 168 km away, with a 32% margin. Start time off by an hour and a half.</li>
   </ul>
-  <p>Of the five blind "high" answers, three passed the clock check and two failed it. The 15% rule held at 100 km and broke at 150–300 km. A bigger area has more planes, so a coincidental match is more likely to score well. For Oct 19 I had it search again only within 15 km of the Sep 30 answer, and it found a spot 0.96 km away, with three different planes and a start time 6 seconds from the real one. The wide search had scored the helicopter match higher, and the reason turned up later in the experiments below.</p>
+  <p>Of the five blind "high" answers, three passed the clock check and two failed it. The 15% rule held at 100 km and broke at 150–300 km. A bigger area has more planes, so a coincidental match is more likely to score well. For Oct 19 I had it search again only within 15 km of the Sep 30 answer, and it found a spot 0.96 km away, with three different planes and a start time 6 seconds from the real one. The wide search had scored the helicopter match higher. Why it did is where the next post starts.</p>
 
   <h2>Where it fails</h2>
   <ul>
     <li>A <a href="https://www.youtube.com/watch?v=SemiF2yUFzk">Huron railcam day</a> with a single flyover and no known time put the answer 69 km off with a 0.8% margin, so the tool now refuses to answer. Adding a known start time and searching the whole US took 5.5 hours of compute and landed in the wrong state. The same setup works in a small region.</li>
     <li>Airport plane-spotting streams have lots of planes but no clean curves. Ground roll and landing flare aren't straight constant-speed passes.</li>
-    <li>Four days of a Lake of the Ozarks dock cam produced zero flyovers. Boats make Doppler curves too, which doesn't help.</li>
     <li><b>Jets.</b> The tool started from the assumption that jets make broadband roar with nothing to fit. Under the approach into CVG, the Northern Kentucky feeder heard clean curves at 107–144 m/s, which were jets on approach. The tool skips jets because dozens fly the same path, and any one of them looks like the others.</li>
     <li><b>A <a href="https://www.youtube.com/watch?v=GjumQJU_KBw">"1 hour" backyard recording from outside Boston</a>.</b> 71 views, real home footage, planes mentioned in the description. It was a 30-minute recording played twice. Identical curves 1,794 seconds apart can't match real planes, which can't fly the same pass twice. The date was also unknown, so even the de-looped half didn't match.</li>
-    <li>Several livestream archives were mostly overnight, and small planes rarely fly at 3 am.</li>
   </ul>
   <figure>
     <div class="pair">
@@ -262,128 +260,23 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
     <figcaption><a href="https://www.youtube.com/watch?v=OiJk-_uPQVM">Northern Kentucky, Sep 8</a>: fitted at 139 m/s, with the distance at the fit's 8 km limit. That's too fast for a Cessna, so it was most likely a jet on approach.</figcaption>
   </figure>
 
-  <h2 class="part">Making it better</h2>
-
-  <h2>Going wide</h2>
-  <p>Once it worked, I tried about a dozen ideas to make it better. Each one got its own folder and a written report, and nothing reached the main code until it was measured on the same labeled recordings.</p>
-
-  <h2>What made it in</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Change</th><th>What it fixed</th></tr></thead>
-    <tbody>
-      <tr><td>Faster scoring: one vectorized gather instead of a Python loop, one worker pool per search, flight data cut once per search</td><td>A 150 km search went from 145 s to 18 s with bit-identical output. Numba would have added about 10%, so no Rust and no numba.</td></tr>
-      <tr><td>Drop helicopters from the flight data</td><td>Removed the medical-helicopter answer for Oct 19. Rotorcraft are 6–9% of daily tracks, and their speed and straightness look just like small planes'.</td></tr>
-      <tr><td>Silence window 30 → 60 s, and no early cut before the speed sweep</td><td>The real pair of planes for Oct 19 had been thrown out twice before scoring, and neither step logged it. A Cessna passed 1.5 km from the feeder 31 s after another flyover, inside the old 30 s window. Then a per-tile top-300 cut, scored before the speed sweep, dropped the true pair at rank 346. Now the 150 km search lands 0.9 km from the feeder, start 3 s off, rated low.</td></tr>
-      <tr><td>Doppler-scale check</td><td>On correct answers each main plane needs its speed stretched by 6% at most. If one needs more than 8%, the answer is low. This caught both wrong-high answers. It also demoted one correct answer whose spot was 0.9 km off.</td></tr>
-      <tr><td><code>--decoys 5</code></td><td>A confidence rule that actually separates right from wrong. Next section.</td></tr>
-    </tbody>
-  </table></div>
-  <p>On the 23 recordings I had labels for, wrong answers rated high went from 2 to 0, correct answers from 7 to 8, and the full run got 25% faster.</p>
-
-  <h2>What didn't</h2>
-  <div class="tablewrap"><table>
-    <thead><tr><th>Idea</th><th></th><th>What happened</th></tr></thead>
-    <tbody>
-      <tr><td>Wind aloft from Doppler vs ground speed</td><td><span class="verdict no">Wrong premise</span></td><td>Someone on the ground hears the plane's speed over the ground. Wind only changes the speed of sound a little, a 1–4% effect. On 18 flyovers the best speed scale was 1.009 ± 0.046, and weather-model winds explained none of the spread.</td></tr>
-      <tr><td>Aircraft type from the propeller's base tone</td><td><span class="verdict no">Dropped</span></td><td>The physics is right: 67–84 Hz for two-blade four-cylinder pistons, 126 Hz for an SR22, 99 Hz for a Saab 2000. In rescoring it rejected a third of wrong matches. In full searches it changed no correct answer, but it built a new wrong answer at a 53% margin, held low only by the Doppler-scale check. About a third of ADS-B aircraft have no known type, which leaves the rule little to act on.</td></tr>
-      <tr><td>Narrower speed sweep, ±5%</td><td><span class="verdict no">Dropped</span></td><td>Broke the Oct 19 recovery. A spot 0.9 km off needs the planes 16% faster, so a tight sweep throws out answers that are close but not exact.</td></tr>
-      <tr><td>Region from bird species (BirdNET)</td><td><span class="verdict no">No</span></td><td>Best guess a median 628 km from the truth. Feeder birds are the same everywhere east of the Plains. It does get the season right to about a week, which could help when the date is unknown.</td></tr>
-      <tr><td>Temperature from cricket song</td><td><span class="verdict mixed">Works, doesn't help</span></td><td>The pitch of the dusk chorus moves about 94 Hz per °C and reads temperature to about 1 °C on good evenings. But the evening temperature curve is the same across half the Midwest, so it doesn't narrow the place.</td></tr>
-      <tr><td>Date from mains hum (ENF)</td><td><span class="verdict mixed">Blocked</span></td><td>23 of 78 recordings carry 60 Hz grid hum, and two feeder streams in North Carolina and Georgia line up to 15 s by hum alone. Dating a single recording needs a log of grid frequency, and there's no free one for 2026. I asked the FNET/GridEye team at UT Knoxville, and they sent a first day of data. It isn't tested yet.</td></tr>
-      <tr><td>"Sky Shazam": an index of every small-plane pass</td><td><span class="verdict mixed">Regional only</span></td><td>Over a 600 km box and 24 days, recordings with 4+ flyovers had the true day and spot in the top 5 three times out of four, with no date given. For the whole US over 1,000 days the index would be about 230 GB and a query about 6 hours. It also picked Oshkosh on the AirVenture arrival day for one recording, because dense traffic wins votes.</td></tr>
-    </tbody>
-  </table></div>
-
-  <h2>A confidence score that means something</h2>
-  <p>The 15% margin rule kept failing, and one experiment showed why. Take a recording, run its flyovers against the flight data of some other day, when it can't possibly match, and the margin rule still says "high" 11 times out of 65. With enough planes in the box, some combination always wins by a lot.</p>
-  <p>So the tool now asks the wrong days directly. With <code>--decoys 5</code> it searches 5 other days of flight data with the same flyovers. The answer is high only when today's best score is at least 1.2× the best score from any wrong day, there are at least 3 flyovers, and the Doppler-scale check passes. With only two flyovers there's nothing left over to check the match against, so two-flyover answers are always low. The cost is a search about 6× longer.</p>
-
-  <h2>The reality check: 36 recordings it had never seen</h2>
-  <p>Everything so far was tuned on recordings I'd already looked at. So I took 39 new 2026 livestream archives (<a href="https://github.com/dreamiurg/geodoppler/blob/main/experiments/dataset/labeled.json">the list</a>), a different set from the 36 in the funnel above. I kept the 36 on days whose flight data was already downloaded and ran the tool on them unchanged. It got each stream's day and a 150 or 250 km circle around the region its channel names, and nothing else. The only truth I had was YouTube's go-live time, so "right" here means a found start within 60 s of it. The true spots are unknown.</p>
-  <p>The first run got 4 of 36 right. 30 were wrong and 2 got no answer. Going through the misses one by one turned up two bugs. The join that pairs up candidates ran out of memory on one big search near Orlando, and verifying extra flyovers clipped each plane's track to a small box, which dropped fast or sparse passes. With both fixed, 6 of 36 came out right, 29 wrong and 1 got no answer. One answer that had been right by a 0.7% margin turned wrong.</p>
-  <figure class="panel">
-    <svg class="wide" viewBox="0 0 700 260" role="img" aria-label="Decoy ratio for 34 answered recordings. Wrong answers, red, cluster between 0.80 and 1.03, with three at 1.10, 1.13 and 1.22. Correct answers, green, are at 0.93, 1.21, 1.28 and 2.23. The high threshold is at 1.2.">
-      <line x1="60" y1="230" x2="640" y2="230" stroke="var(--line)"/>
-      <g>
-        <line x1="105" y1="230" x2="105" y2="236" stroke="var(--muted)"/><text x="94" y="252">0.8</text>
-        <line x1="195" y1="230" x2="195" y2="236" stroke="var(--muted)"/><text x="184" y="252">0.9</text>
-        <line x1="285" y1="230" x2="285" y2="236" stroke="var(--muted)"/><text x="274" y="252">1.0</text>
-        <line x1="375" y1="230" x2="375" y2="236" stroke="var(--muted)"/><text x="364" y="252">1.1</text>
-        <line x1="465" y1="230" x2="465" y2="236" stroke="var(--muted)"/><text x="454" y="252">1.2</text>
-        <line x1="555" y1="230" x2="555" y2="236" stroke="var(--muted)"/><text x="544" y="252">1.3</text>
-        <text x="604" y="252">2.2</text>
-      </g>
-      <path d="M582 226 l6 8 M588 226 l6 8" stroke="var(--muted)"/>
-      <rect x="465" y="20" width="175" height="210" fill="var(--ok)" opacity=".08"/>
-      <line x1="465" y1="20" x2="465" y2="230" stroke="var(--ok)" stroke-dasharray="4 4"/>
-      <text class="ink" x="473" y="36">"high" from 1.2</text>
-      <text x="10" y="154" style="fill:var(--bad)">wrong</text>
-      <text x="10" y="204" style="fill:var(--ok)">right</text>
-      <circle cx="105" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="114" cy="150" r="5" fill="var(--bad)"/><circle cx="114" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="123" cy="150" r="5" fill="var(--bad)"/><circle cx="123" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="177" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="195" cy="150" r="5" fill="var(--bad)"/><circle cx="195" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="204" cy="150" r="5" fill="var(--bad)"/><circle cx="204" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="213" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="222" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="231" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="249" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="258" cy="150" r="5" fill="var(--bad)"/><circle cx="258" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="267" cy="150" r="5" fill="var(--bad)"/><circle cx="267" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="276" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="285" cy="150" r="5" fill="var(--bad)"/><circle cx="285" cy="137" r="5" fill="var(--bad)"/><circle cx="285" cy="124" r="5" fill="var(--bad)"/><circle cx="285" cy="111" r="5" fill="var(--bad)"/>
-      <circle cx="294" cy="150" r="5" fill="var(--bad)"/><circle cx="294" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="312" cy="150" r="5" fill="var(--bad)"/><circle cx="312" cy="137" r="5" fill="var(--bad)"/>
-      <circle cx="375" cy="150" r="5" fill="var(--bad)"/>
-      <circle cx="402" cy="150" r="5" fill="var(--bad)"/>
-      <text x="356" y="118">old "high"</text><line x1="400" y1="122" x2="402" y2="142" stroke="var(--muted)"/>
-      <circle cx="483" cy="150" r="5" fill="none" stroke="var(--bad)" stroke-width="2"/>
-      <text x="492" y="135">fails Doppler check</text>
-      <circle cx="222" cy="200" r="7" fill="var(--ok)"/>
-      <circle cx="474" cy="200" r="7" fill="var(--ok)"/>
-      <circle cx="537" cy="200" r="7" fill="var(--ok)"/>
-      <circle cx="615" cy="200" r="7" fill="var(--ok)"/>
-    </svg>
-    <figcaption>First run, before the two fixes. Best score on the real day divided by the best score on 5 wrong days, for the 34 recordings that got an answer. Hollow: wrong, and caught by the Doppler-scale check. The axis breaks between 1.35 and 2.2.</figcaption>
-  </figure>
-  <p>In the first run the new rule called 3 answers high, and all three were right. None of the 30 wrong ones got high. The old margin rule had called one wrong answer high, with a 43% margin and a start time 2.9 hours off. The ratio put it at 1.13. The one wrong answer that did clear 1.2 needed its planes 13–25% off their real speed, and the Doppler-scale check caught it. In that run neither check was enough on its own. That recording turned out right after the verification fix.</p>
-  <p>After the fixes, 2 of the 6 correct answers are high and none of the wrong ones are. Correct answers have ratios of 0.87, 1.01, 1.18, 1.19, 1.29 and 2.25, and the highest wrong one is 1.12. One correct answer slipped from 1.21 to 1.19, just under the line. The old margin rule still calls that 43% answer high.</p>
-  <p>Six correct answers is still a tiny sample, and 1.2 wasn't retuned after the fixes, so it's a provisional threshold. When the tool says high now, it has been right every time, but it gets the start time right for only about one recording in six, and that's the problem to work on next.</p>
-
-  <h2>Gotchas</h2>
-  <ul>
-    <li><b>Filters drop the right answer without a word.</b> Both Oct 19 drops above were silent. Any filter that throws candidates away should log what it threw.</li>
-    <li><b>The 200 m grid matters.</b> Of about 290 grid points both true planes passed, only 1–3 matched the 10 s timing window, and which ones depended on where the grid started.</li>
-    <li><b>The fitted pitch is the brightest harmonic.</b> On 20 correct matches it locked onto 1×, 2×, 3× or 4× the base tone. Pitch alone says little about the plane.</li>
-    <li><b>Decoys need disk.</b> Each day of flight data is a 4 GB download that shrinks to about 0.7 GB, and the confidence rule needs 5 other days on hand.</li>
-  </ul>
-
-  <h2>When it works</h2>
-  <p>It works only under narrow conditions. You need a long outdoor recording with no editing, a day, a rough region, and luck with traffic: small planes passing within a few kilometers while the mic is on. Most YouTube videos don't qualify. On the 36 held-out livestreams it got the start time right for 6.</p>
-  <p>When it does work, the answer is specific. A bird feeder with 183 views, described only as "Northeast Ohio", resolves to a few hundred meters and the second the stream started, from a Cessna that happened to fly by.</p>
-
-  <h2>What I'd try next</h2>
-  <ul>
-    <li><b>Recall.</b> The first pass is done: I reran every miss with the known start time and sorted them. 3 were looped audio, 5 had a fitted speed no small plane in ADS-B matched, and in 12 a pair of planes fit the real start time but ranked no better than chance. It found the two bugs above, and the rest is mostly the method, not a bug.</li>
-    <li><b>Negative evidence.</b> Penalize a spot where a loud plane passed close by and the audio heard nothing. Aimed at busy places like Oshkosh.</li>
-    <li><b>Stricter extra flyovers.</b> Credit an extra flyover only when its Doppler scale is within 8%. A few correct answers took credit from planes that needed 30–46%.</li>
-    <li><b>Refine the spot with the Doppler scale.</b> The planes needed 1.16 at the spot 0.9 km off and 1.01 at the real one.</li>
-    <li><b>A learned flyover detector.</b> Render synthetic curves from real ADS-B tracks onto real background noise and train a detector to find faint passes the current one misses.</li>
-    <li><b>An unknown date.</b> The plane-pass index as a day finder within a region, with BirdNET season as a prior.</li>
-    <li><b>Mains hum dating</b>, if grid frequency data comes through.</li>
-    <li><b>Other Doppler sources with public tracks:</b> ships with AIS, train horns.</li>
-    <li><b>Jets near airports</b>, with a stricter timing check.</li>
-    <li><b>More labeled recordings.</b> Six positives can't set a threshold.</li>
-  </ul>
-
   <h2>Try it</h2>
   <p>The code is at <code>github.com/dreamiurg/geodoppler</code>. It's a Python CLI, and it also ships a Claude Code skill that runs the whole thing from a YouTube link. The command is still called <code>pinpoint</code>, the project's name before the repo got renamed.</p>
   <pre>uv run pinpoint fetch 'https://www.youtube.com/watch?v=...'
 uv run pinpoint events runs/&lt;id&gt;
-uv run pinpoint locate runs/&lt;id&gt; --date 2026-09-08 --bbox 40.9,-73.5,120 --decoys 5</pre>
-  <p>Expect a 4 GB download per day of flight data and a few minutes per search. Only some of the experiments are in the public repo so far: the held-out test, the recall analysis and the integration check, each with its scripts and a report in <code>experiments/</code>. The rest aren't published yet. PRs welcome.</p>
+uv run pinpoint locate runs/&lt;id&gt; --date 2026-09-08 --bbox 40.9,-73.5,120</pre>
+  <p>Expect a 4 GB download per day of flight data and a few minutes per search. PRs welcome.</p>
   <p>A note on privacy: some of these livestreams come from private homes. This post gives no coordinates for them and names nothing finer than a town. The repo rounds their coordinates to 0.01° (about 1 km). Please do the same if you publish results about someone else's recording. The same technique works on any long outdoor recording, which is the point of colsto's original video. If you stream from your backyard, the planes overhead are part of your location.</p>
+
+  <h2>Coming next</h2>
+  <p>This post stops at the first version: it found a few recordings, and it was confidently wrong about two. The second post is about trying to make it better:</p>
+  <ul>
+    <li>why the helicopter match won, and the small fixes that removed both wrong "high" answers;</li>
+    <li>a confidence score that compares the answer against days when the recording can't possibly match;</li>
+    <li>a test on 36 livestreams the tool had never seen, where it got the start time right for 6;</li>
+    <li>ideas that didn't work: wind from Doppler, aircraft type from propeller pitch, birdsong, cricket song, mains hum, and an index of every small-plane pass;</li>
+    <li>the gotchas, and what I'd try next.</li>
+  </ul>
 
   <footer>Flight data from adsb.lol, elevation from Copernicus GLO-90. Idea and method from colsto's video. Times are UTC.</footer>
 </article>
