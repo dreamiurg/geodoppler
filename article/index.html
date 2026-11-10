@@ -180,7 +180,7 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
   <ul>
     <li><b>Curve fitting.</b> Each candidate flyover gets a straight-line model (base pitch, speed, closest distance, time) fitted by <a href="https://en.wikipedia.org/wiki/Differential_evolution">differential evolution</a>. Harmonics count as extra evidence. Scoring also lets each plane's speed stretch by up to ±15%. The first version said that was for wind. It wasn't, and the wind experiment below explains why.</li>
     <li><b>Flight data.</b> <a href="https://github.com/adsblol/globe_history_2026">adsb.lol</a> publishes a full day of community-collected ADS-B traces as a ~4 GB download. The tool keeps only non-jet aircraft over the continental US, about 700 MB per day.</li>
-    <li>A plane at 900 m is a lot closer to a backyard on a 400 m hill, so the tool uses Copernicus GLO-90 elevation.</li>
+    <li>A plane at 900 m is a lot closer to a backyard on a 400 m hill, so the tool needs the height of the ground. It takes that from <a href="https://registry.opendata.aws/copernicus-dem/">Copernicus GLO-90</a>, a free elevation map of the whole planet on a 90 m grid.</li>
     <li><b>Extra flyovers.</b> The two strongest curves narrow the search, and every other curve must also line up with some real plane at the right second. A curve with no plane behind it costs nothing, since plenty of small planes have no transponder.</li>
   </ul>
   <p>The output is a map, a score, and a recording start time to the second. The start time later became the main check on whether an answer is right.</p>
