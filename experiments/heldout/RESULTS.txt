@@ -16,7 +16,7 @@ STEP 1 (step1_table.txt): 36 cases: 4 correct, 30 wrong, 2 none.
 STEP 3 (step3_table.txt): all 34 answered cases have >= 3 events; 33 got 5 decoys, d2EqZDmIw_k crashed (exit 70)
 on decoy 5, ratio 1.10 over the 4 it finished (wrong, k-flagged).
   correct ratios: 0.93, 1.21, 1.28, 2.23
-  wrong ratios:   0.80 ... 0.99 (21 cases), 1.00, 1.01, 1.01, 1.03, 1.03, 1.10, 1.13, 1.22
+  wrong ratios:   0.80 ... 0.99 (19 cases), 1.00 (4 cases), 1.01, 1.01, 1.03, 1.03, 1.10, 1.13, 1.22
   decoy rule (1.2, >= 3 events, k flag): correct 3 high / 1 low; wrong 0 high / 30 low.
   Kz69coKyH9Q is wrong at ratio 1.221 (start 243 s off), above the correct UMf6oAlorlk at 1.209; only the
   k flag (1.13/1.25) keeps it low. It is the same channel as wTRF12TtDsQ (JB and Cloie's Birds), and its spot

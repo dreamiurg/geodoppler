@@ -13,8 +13,8 @@ Kz69coKyH9Q, TbVt7uWmnlQ), and offset_filter's join ran out of memory (F: LYoUoV
 With both fixes, held-out (heldout.py run + decoys, variant `whole`, same 36 cases, decoy rule unchanged):
   correct 4 -> 6, wrong 30 -> 29, none 2 -> 1; wrong-high 0 -> 0 (decoy rule), 1 -> 1 (margin rule, 7NzTIUwkPE8).
   Cost: Cs4nYfpcC0E (correct, low, 0.7 % margin) turns wrong, and UMf6oAlorlk's decoy ratio drops 1.21 -> 1.19,
-  so decoy-rule correct-high goes 3 -> 2. The 3 cases gained are all low. Recall is still 6 of 36: 19 of the 30
-  failures (A, B, C, E) have no evidence the right aircraft is findable at all.
+  so decoy-rule correct-high goes 3 -> 2. The 3 cases gained are all low. Recall is still 6 of 36: 22 of the 30
+  failures (A, B, C, E: 3 + 5 + 2 + 12) have no evidence the right aircraft is findable at all.
 
 GROUND TRUTH AND RULES
 Sound only. CORRECT = found start within 60 s of the YouTube go-live (release_timestamp), as heldout.py.
