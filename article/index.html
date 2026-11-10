@@ -96,12 +96,10 @@ footer { color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line
     <ul>
       <li>A propeller plane flying past a microphone leaves a falling tone in the recording. The shape of that tone gives the plane's speed, how close it passed, and the second it passed.</li>
       <li>Planes broadcast their position, and hobbyists keep the history. <a href="https://github.com/dreamiurg/geodoppler">geodoppler</a> is a Python CLI that searches a grid of possible spots for the one where real planes would have made the tones in the audio. It gives back a pin on a map and the second the recording started.</li>
-      <li>Pointed at random backyard livestreams on YouTube, it found one bird feeder in Northeast Ohio on three separate days, each time within half a kilometer of the same spot. Its first confidence rule, a score margin, also called two wrong answers high, and both were in the wrong state.</li>
-      <li>I then tested it on 36 livestreams it had never seen, giving it each stream's day and a search circle around the region its channel names. It got the recording start time right for 6. The rule it uses now, which compares against 5 other days of flight data, called 2 of those 6 high and none of the wrong answers. Most recordings don't have the planes it needs.</li>
     </ul>
   </section>
 
-  <h2>The video that started it</h2>
+  <h2>The idea</h2>
   <p>The idea from colsto's video: propeller planes produce a tone from their blades. As a plane passes, the Doppler effect bends that tone down. Most of the time you can't hear it over everything else, but it shows up clearly in a <a href="https://en.wikipedia.org/wiki/Spectrogram">spectrogram</a>. Planes broadcast their position over <a href="https://en.wikipedia.org/wiki/Automatic_Dependent_Surveillance%E2%80%93Broadcast">ADS-B</a>, and hobbyists record those broadcasts. So the sound in a video can be matched against where real planes actually were.</p>
   <p>The goal was a YouTube link in and a pin on a map out.</p>
 
