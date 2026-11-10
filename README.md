@@ -5,7 +5,7 @@ Find where a recording was made from the sound of small planes flying past the m
 ![Spectrogram of a backyard bird-feeder livestream. Around 2,200 s three parallel lines fall in pitch.](docs/img/spectrogram-flyover.png)
 
 Ten minutes of a backyard bird-feeder livestream in Northeast Ohio, 20-500 Hz. You can't hear it, but the three
-lines falling together around 2,200 s are one propeller plane passing overhead: harmonics of its blade tone,
+lines falling together around 2,200 s are one propeller plane passing by: harmonics of its blade tone,
 bent down by the Doppler effect.
 
 The idea comes from [@colsto](https://www.youtube.com/@colsto)'s video
@@ -51,7 +51,7 @@ The command is still called `pinpoint`, the project's first name.
 - On [@colsto](https://www.youtube.com/@colsto)'s raw recording it lands on the spot the video names. On a railroad cam in Huron, Ohio it lands
   0.21 km from the camera with 5 aircraft matched.
 - It needs the right recording: unedited audio with a small plane within about 8 km, two for an unknown start
-  time. Most recordings have none, and then it marks its answer `low`.
+  time. Most recordings have none, and then it finds no flyovers at all; a weak match comes back as `low`.
 - On 36 livestreams it had never seen, given each stream's day and a region of 150-250 km, it got the start time
   right for 6. With `--decoys 5` (the same search on 5 other days) it said `high` twice, both right, and never
   for a wrong answer. That threshold rests on few cases, so treat it as provisional.
